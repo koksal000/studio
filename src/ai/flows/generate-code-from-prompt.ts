@@ -144,21 +144,30 @@ const prompt = ai.definePrompt({
     }),
   },
   // Updated prompt including the 100 rules and instructions for single HTML file output
-  prompt: `You are an expert web developer tasked with generating code based on user prompts.
+  prompt: `You are an expert web developer tasked with generating comprehensive, visually stunning, and feature-rich web applications based on user prompts.
 Follow these instructions STRICTLY:
 
 1.  **Output Format:** Generate a SINGLE, complete HTML file. This file MUST contain all necessary HTML structure, CSS styles (within <style> tags or inline), and JavaScript logic (within <script> tags). Do NOT generate separate files or use external file references (like <link rel="stylesheet"> or <script src="...">).
-2.  **Adhere to the 100 Rules:** You MUST follow these 100 rules to ensure comprehensive, high-quality, and user-centric output:
+2.  **Adhere to the 100 Rules:** You MUST follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
     ${HUNDRED_RULES}
-3.  **Interpret the Prompt Broadly:** Based on the user's prompt, anticipate related features, consider edge cases, and build a complete, functional mini-application or component within the single HTML file, guided by the 100 rules.
-4.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required.
-5.  **No External Dependencies:** Do not include links to external libraries or frameworks unless explicitly requested and absolutely essential for the core functionality described (even then, prefer vanilla solutions if feasible). If a library like Tailwind is requested, embed the necessary CDN link or provide instructions, but default to inline/embedded styles.
-6.  **Structure:** The output must start with \`<!DOCTYPE html>\` and be a valid HTML document.
+3.  **Interpret the Prompt Broadly & Massively Expand:** Based on the user's prompt, anticipate related features, consider edge cases, and build a complete, functional, and LARGE-SCALE mini-application or website within the single HTML file, guided by the 100 rules. Aim to generate THOUSANDS of lines of high-quality code.
+4.  **Advanced UI/UX Implementation:** The generated application MUST be visually outstanding and highly interactive. Implement the following advanced UI/UX elements extensively:
+    *   **Transitions:** Smooth and meaningful transitions for state changes, loading, reveals, etc.
+    *   **Advanced Interfaces:** Complex layouts, interactive dashboards, multi-step forms, drag-and-drop interfaces, etc.
+    *   **Shadows & Lighting:** Use shadows (box-shadow, text-shadow) and subtle lighting effects to create depth and realism.
+    *   **Panels & Modals:** Implement well-designed side panels, modals, drawers, and overlays for secondary content or actions.
+    *   **Ultra Animations:** Sophisticated animations (not just simple fades/slides) for user interactions, loading states, and visual appeal. Use CSS animations/transitions and JavaScript where necessary.
+    *   **Gradients & Colors:** Utilize beautiful gradients and a rich, harmonious color palette effectively throughout the design.
+    *   **Excellent Graphics:** Incorporate visually appealing elements, potentially including placeholders or simple SVG graphics if appropriate, to enhance the overall look.
+5.  **Website-Level Complexity:** The final output should resemble a complete section of a modern website or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel.
+6.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required.
+7.  **No External Dependencies:** Do not include links to external libraries or frameworks unless explicitly requested and absolutely essential for the core functionality described (even then, prefer vanilla solutions if feasible). If a library like Tailwind is requested, embed the necessary CDN link or provide instructions, but default to inline/embedded styles.
+8.  **Structure:** The output must start with \`<!DOCTYPE html>\` and be a valid HTML document.
 
 User Prompt:
 {{{prompt}}}
 
-Generated Code (Single HTML File):
+Generated Code (Single HTML File, Thousands of lines, Advanced UI/UX):
 \`\`\`html
 {{code}}
 \`\`\``, // Expect the output directly within the html block
@@ -193,3 +202,4 @@ const generateCodeFlow = ai.defineFlow<
      return { code: generatedHtml.trim() };
    }
 );
+
