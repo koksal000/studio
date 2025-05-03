@@ -76,20 +76,22 @@ export function RefactorCodeModal() {
     }
 
     // Basic side-by-side view using pre/code for simplicity
-    // Replace with a proper diff viewer component for better visualization
+    // Removed overflow-hidden from the grid container
     return (
-        <div className="mt-4 grid grid-cols-2 gap-4 border rounded-md p-2 max-h-[40vh] overflow-hidden">
-            <div className="flex flex-col">
+        <div className="mt-4 grid grid-cols-2 gap-4 border rounded-md p-2 max-h-[40vh]">
+            <div className="flex flex-col h-full"> {/* Ensure flex container takes height */}
                 <Label className="text-xs text-muted-foreground mb-1">Original Code</Label>
-                <ScrollArea className="flex-1 border rounded-md p-2 bg-muted/20">
+                {/* Use h-full on ScrollArea */}
+                <ScrollArea className="flex-1 border rounded-md p-2 bg-muted/20 h-full">
                    <pre className="text-xs font-mono whitespace-pre-wrap break-words">
                      <code>{generatedCode}</code>
                    </pre>
                 </ScrollArea>
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col h-full"> {/* Ensure flex container takes height */}
                <Label className="text-xs text-muted-foreground mb-1">Refactored Code</Label>
-                <ScrollArea className="flex-1 border rounded-md p-2 bg-green-500/10">
+                {/* Use h-full on ScrollArea */}
+                <ScrollArea className="flex-1 border rounded-md p-2 bg-green-500/10 h-full">
                   <pre className="text-xs font-mono whitespace-pre-wrap break-words">
                     <code>{refactoredCode}</code>
                   </pre>
@@ -99,30 +101,32 @@ export function RefactorCodeModal() {
     );
     /* Example using react-diff-viewer (requires installation: npm install react-diff-viewer)
     return (
-      <div className="mt-4 border rounded-md overflow-hidden">
-        <DiffViewer
-          oldValue={generatedCode || ''}
-          newValue={refactoredCode || ''}
-          splitView={true}
-          showDiffOnly={false} // Show full files
-          leftTitle="Original Code"
-          rightTitle="Refactored Code"
-          styles={{
-             variables: {
-               light: { // Adapt colors to your theme
-                 diffViewerBackground: 'hsl(var(--background))',
-                 diffViewerColor: 'hsl(var(--foreground))',
-                 addedBackground: 'hsl(145 63% 90%)', // Example green tint
-                 addedColor: 'hsl(145 63% 20%)',
-                 removedBackground: 'hsl(0 84% 90%)', // Example red tint
-                 removedColor: 'hsl(0 84% 30%)',
-                 wordAddedBackground: 'hsl(145 63% 80%)',
-                 wordRemovedBackground: 'hsl(0 84% 80%)',
-                 // ... other style overrides
-               },
-             },
-           }}
-        />
+      <div className="mt-4 border rounded-md overflow-hidden max-h-[40vh]"> // Add max-h here
+        <ScrollArea className="h-full"> // Wrap DiffViewer in ScrollArea
+            <DiffViewer
+              oldValue={generatedCode || ''}
+              newValue={refactoredCode || ''}
+              splitView={true}
+              showDiffOnly={false} // Show full files
+              leftTitle="Original Code"
+              rightTitle="Refactored Code"
+              styles={{
+                 variables: {
+                   light: { // Adapt colors to your theme
+                     diffViewerBackground: 'hsl(var(--background))',
+                     diffViewerColor: 'hsl(var(--foreground))',
+                     addedBackground: 'hsl(145 63% 90%)', // Example green tint
+                     addedColor: 'hsl(145 63% 20%)',
+                     removedBackground: 'hsl(0 84% 90%)', // Example red tint
+                     removedColor: 'hsl(0 84% 30%)',
+                     wordAddedBackground: 'hsl(145 63% 80%)',
+                     wordRemovedBackground: 'hsl(0 84% 80%)',
+                     // ... other style overrides
+                   },
+                 },
+               }}
+            />
+        </ScrollArea>
       </div>
     );
     */
