@@ -1,1 +1,3 @@
-// Flows will be imported for their side effects in this file.
+import '@/ai/flows/explain-code.ts';
+import '@/ai/flows/generate-code-from-prompt.ts';
+import '@/ai/flows/refactor-code.ts';
