@@ -13,12 +13,12 @@ import {z} from 'genkit';
 
 const RefactorCodeInputSchema = z.object({
   code: z.string().describe('The code to be refactored.'),
-  prompt: z.string().describe('The prompt for refactoring the code.'),
+  prompt: z.string().describe('The prompt describing the desired refactoring changes.'),
 });
 export type RefactorCodeInput = z.infer<typeof RefactorCodeInputSchema>;
 
 const RefactorCodeOutputSchema = z.object({
-  refactoredCode: z.string().describe('The refactored code.'),
+  refactoredCode: z.string().describe('The comprehensively refactored code.'),
 });
 export type RefactorCodeOutput = z.infer<typeof RefactorCodeOutputSchema>;
 
@@ -31,25 +31,30 @@ const prompt = ai.definePrompt({
   input: {
     schema: z.object({
       code: z.string().describe('The code to be refactored.'),
-      prompt: z.string().describe('The prompt for refactoring the code.'),
+      prompt: z.string().describe('The prompt describing the desired refactoring changes.'),
     }),
   },
   output: {
     schema: z.object({
-      refactoredCode: z.string().describe('The refactored code.'),
+      refactoredCode: z.string().describe('The comprehensively refactored code.'),
     }),
   },
   prompt: `You are an expert code refactoring agent.
 
-You will be given code and a prompt to refactor the code.
+You will be given code and a prompt describing how to refactor the code. Apply the requested changes comprehensively throughout the code, ensuring consistency and maintaining functionality unless the prompt specifies otherwise. Output only the fully refactored code.
 
-Code:
+Original Code:
+\`\`\`html
 {{{code}}}
+\`\`\`
 
-Prompt:
+Refactoring Prompt:
 {{{prompt}}}
 
-Refactored Code:`, 
+Refactored Code:
+\`\`\`html
+{{refactoredCode}}
+\`\`\``,
 });
 
 const refactorCodeFlow = ai.defineFlow<
@@ -63,6 +68,17 @@ const refactorCodeFlow = ai.defineFlow<
   },
   async input => {
     const {output} = await prompt(input);
-    return output!;
+
+     // Clean up potential markdown backticks from the output
+     let refactoredHtml = output?.refactoredCode || '';
+     if (refactoredHtml.startsWith('```html')) {
+       refactoredHtml = refactoredHtml.substring(7);
+     }
+     if (refactoredHtml.endsWith('```')) {
+       refactoredHtml = refactoredHtml.substring(0, refactoredHtml.length - 3);
+     }
+
+    return { refactoredCode: refactoredHtml.trim() };
   }
 );
+```
