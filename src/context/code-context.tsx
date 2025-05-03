@@ -1,90 +1,55 @@
 'use client';
 
-import React, { createContext, useState, useContext, ReactNode, useCallback } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
 import { generateCode } from '@/ai/flows/generate-code-from-prompt';
 import JSZip from 'jszip';
 
-// Define the structure for generated files
+// Define the structure for generated files (now simplified for single file)
 export interface GeneratedFile {
-  fileName: string;
-  content: string;
+  fileName: string; // Will typically be 'index.html'
+  content: string; // The full HTML content
 }
 
 interface CodeContextType {
   prompt: string;
   setPrompt: (prompt: string) => void;
-  generatedCode: string;
-  setGeneratedCode: (code: string) => void;
-  generatedFiles: GeneratedFile[];
-  setGeneratedFiles: (files: GeneratedFile[]) => void;
+  generatedCode: string; // Stores the raw generated HTML string
+  generatedFiles: GeneratedFile[]; // Will usually contain just one file object
   isLoading: boolean;
   error: string | null;
   previewUrl: string | null;
   handleGenerateCode: () => Promise<void>;
   downloadCode: () => Promise<void>;
-  updatePreview: () => void;
+  updatePreview: () => void; // Kept for potential manual refresh, though auto-update is primary
 }
 
 const CodeContext = createContext<CodeContextType | undefined>(undefined);
 
 export const CodeProvider = ({ children }: { children: ReactNode }) => {
   const [prompt, setPrompt] = useState<string>('');
-  const [generatedCode, setGeneratedCode] = useState<string>('');
-  const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
+  const [generatedCode, setGeneratedCode] = useState<string>(''); // Raw output from AI
+  const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]); // Array, but usually holds one file
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  // Cleanup function for Blob URL
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
+  // Simplified parser: assumes the entire output is a single HTML file content
   const parseGeneratedCode = (code: string): GeneratedFile[] => {
-    // Simple parser: assumes code blocks are separated by ```[filename] and ```
-    // More robust parsing logic might be needed for complex outputs
-    const files: GeneratedFile[] = [];
-    const fileRegex = /```(\w+\.\w+)?\s*([\s\S]*?)```/g;
-    let match;
-
-    // First, check if there are any explicit file markers
-    const hasFileMarkers = /```\w+\.\w+/.test(code);
-
-    if (hasFileMarkers) {
-        while ((match = fileRegex.exec(code)) !== null) {
-          const fileName = match[1] || `untitled-${files.length + 1}.txt`;
-          const content = match[2].trim();
-          if (content) {
-              files.push({ fileName, content });
-          }
-        }
+    if (!code || code.trim() === '') {
+      return []; // Return empty if no code generated
     }
-
-    // If no file markers were found or no files were extracted, treat the whole code as a single file
-    if (files.length === 0) {
-        // Try to infer a reasonable default filename (e.g., index.html if it looks like HTML)
-        let defaultFileName = 'generated-code.txt';
-        if (code.trim().startsWith('<') && code.trim().endsWith('>')) {
-            if (/<html/i.test(code)) {
-                defaultFileName = 'index.html';
-            } else if (/<body/i.test(code)) {
-                 defaultFileName = 'index.html'; // Assume it's part of an HTML doc
-            } else if (/<script/i.test(code)) {
-                 defaultFileName = 'script.js';
-            } else if (/<style/i.test(code)) {
-                 defaultFileName = 'style.css';
-            } else {
-                 defaultFileName = 'component.jsx'; // Default for React/JSX like structures
-            }
-        } else if (code.includes('function') || code.includes('const') || code.includes('let') || code.includes('import')) {
-             defaultFileName = 'script.js';
-        } else if (code.includes('{') && code.includes('}') && (code.includes(':') || code.includes('#') || code.includes('.'))) {
-             defaultFileName = 'style.css';
-        }
-
-        if (code.trim()) { // Only add if there's actual code content
-             files.push({ fileName: defaultFileName, content: code.trim() });
-        }
-    }
-
-
-    // If still no files (e.g., empty input or only markers), return empty array
-    return files;
+    // The AI is instructed to return a single HTML file content.
+    // We wrap it in our GeneratedFile structure.
+    return [{ fileName: 'index.html', content: code.trim() }];
   };
 
 
@@ -97,13 +62,20 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     setGeneratedCode('');
     setGeneratedFiles([]);
+    if (previewUrl) {
+       URL.revokeObjectURL(previewUrl); // Clean up previous URL
+    }
     setPreviewUrl(null); // Reset preview on new generation
 
     try {
+      // The AI flow now returns the complete HTML code directly.
       const result = await generateCode({ prompt });
-      setGeneratedCode(result.code);
-      const files = parseGeneratedCode(result.code);
+      const singleHtmlContent = result.code; // Assuming 'code' holds the full HTML string
+      setGeneratedCode(singleHtmlContent); // Store raw HTML
+
+      const files = parseGeneratedCode(singleHtmlContent); // Create the file structure
       setGeneratedFiles(files);
+
       // Automatically update preview after generation
       updatePreviewInternal(files);
     } catch (err) {
@@ -116,73 +88,51 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Updates the preview URL based on the generated files (usually just index.html)
   const updatePreviewInternal = (files: GeneratedFile[]) => {
-     if (files.length === 0) {
+     if (previewUrl) {
+        URL.revokeObjectURL(previewUrl); // Clean up existing URL before creating a new one
+     }
+
+     if (files.length === 0 || !files[0].content) {
          setPreviewUrl(null);
          return;
      }
 
-     // Prioritize index.html for preview
-     const htmlFile = files.find(f => f.fileName.toLowerCase() === 'index.html');
-
-     if (htmlFile) {
-         // Create a Blob from the HTML content
-         const blob = new Blob([htmlFile.content], { type: 'text/html' });
-         const url = URL.createObjectURL(blob);
-
-         // Clean up previous URL if exists
-         if (previewUrl) {
-             URL.revokeObjectURL(previewUrl);
-         }
-         setPreviewUrl(url);
-     } else {
-         // If no index.html, try to show the first file as plain text or based on its type
-         const firstFile = files[0];
-         let mimeType = 'text/plain';
-         if (firstFile.fileName.endsWith('.js')) mimeType = 'text/javascript';
-         else if (firstFile.fileName.endsWith('.css')) mimeType = 'text/css';
-         else if (firstFile.fileName.endsWith('.json')) mimeType = 'application/json';
-
-         const blob = new Blob([firstFile.content], { type: mimeType });
-         const url = URL.createObjectURL(blob);
-
-          // Clean up previous URL if exists
-         if (previewUrl) {
-             URL.revokeObjectURL(previewUrl);
-         }
-         setPreviewUrl(url);
-     }
+     // Since we expect a single index.html, directly use its content
+     const htmlFile = files[0];
+     const blob = new Blob([htmlFile.content], { type: 'text/html' });
+     const url = URL.createObjectURL(blob);
+     setPreviewUrl(url);
   };
 
 
+  // Callback to manually trigger preview update (might not be strictly necessary with auto-update)
   const updatePreview = useCallback(() => {
      updatePreviewInternal(generatedFiles);
-   }, [generatedFiles, previewUrl]); // Include previewUrl in dependencies to handle cleanup
+   }, [generatedFiles]); // Dependency on generatedFiles ensures it uses the latest
 
 
+  // Download function now downloads a single HTML file directly
   const downloadCode = async () => {
-    if (generatedFiles.length === 0) {
+    if (generatedFiles.length === 0 || !generatedFiles[0].content) {
       setError('No code generated to download.');
       return;
     }
 
     try {
-      const zip = new JSZip();
-      generatedFiles.forEach(file => {
-        zip.file(file.fileName, file.content);
-      });
-
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const file = generatedFiles[0];
+      const blob = new Blob([file.content], { type: 'text/html' });
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(zipBlob);
-      link.download = 'ai-code-weaver-project.zip';
+      link.href = URL.createObjectURL(blob);
+      link.download = file.fileName; // Download as 'index.html'
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href); // Clean up the URL object
     } catch (err) {
-      console.error('Error creating zip file:', err);
-      setError('Failed to create zip file.');
+      console.error('Error creating download link:', err);
+      setError('Failed to prepare file for download.');
     }
   };
 
@@ -192,10 +142,8 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       value={{
         prompt,
         setPrompt,
-        generatedCode,
-        setGeneratedCode,
-        generatedFiles,
-        setGeneratedFiles,
+        generatedCode, // Provide the raw code
+        generatedFiles, // Provide the file structure (usually one file)
         isLoading,
         error,
         previewUrl,
