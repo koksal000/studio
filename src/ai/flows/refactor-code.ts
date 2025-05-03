@@ -81,4 +81,3 @@ const refactorCodeFlow = ai.defineFlow<
     return { refactoredCode: refactoredHtml.trim() };
   }
 );
-```
