@@ -163,11 +163,12 @@ Follow these instructions STRICTLY:
 6.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required.
 7.  **No External Dependencies:** Do not include links to external libraries or frameworks unless explicitly requested and absolutely essential for the core functionality described (even then, prefer vanilla solutions if feasible). If a library like Tailwind is requested, embed the necessary CDN link or provide instructions, but default to inline/embedded styles.
 8.  **Structure:** The output must start with \`<!DOCTYPE html>\` and be a valid HTML document.
+9.  **Completeness:** Ensure the generated HTML code is complete and not truncated. Output the *entire* file content. Partial or incomplete code is unacceptable.
 
 User Prompt:
 {{{prompt}}}
 
-Generated Code (Single HTML File, Thousands of lines, Advanced UI/UX):
+Generated Code (Single HTML File, Thousands of lines, Advanced UI/UX, Complete and Un-truncated):
 \`\`\`html
 {{code}}
 \`\`\``, // Expect the output directly within the html block

@@ -41,7 +41,9 @@ const prompt = ai.definePrompt({
   },
   prompt: `You are an expert code refactoring agent.
 
-You will be given code and a prompt describing how to refactor the code. Apply the requested changes comprehensively throughout the code, ensuring consistency and maintaining functionality unless the prompt specifies otherwise. Output only the fully refactored code.
+You will be given code and a prompt describing how to refactor the code. Apply the requested changes comprehensively throughout the code, ensuring consistency and maintaining functionality unless the prompt specifies otherwise.
+
+**IMPORTANT:** Output *only* the fully refactored code. The output MUST contain the entire, complete, and un-truncated refactored code. Partial output is not acceptable.
 
 Original Code:
 \`\`\`html
