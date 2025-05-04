@@ -115,6 +115,7 @@ const HUNDRED_RULES = `
 100. Üretilen yapı herhangi bir ürüne doğrudan entegre edilecek kalitede olmalı.
 `;
 
+const MAX_CONTINUATION_ATTEMPTS = 3; // Maximum number of times to ask for continuation
 
 const GenerateCodeInputSchema = z.object({
   prompt: z.string().describe('The prompt describing the code to generate.'),
@@ -131,7 +132,8 @@ export async function generateCode(input: GenerateCodeInput): Promise<GenerateCo
   return generateCodeFlow(input);
 }
 
-const prompt = ai.definePrompt({
+// Define the initial generation prompt
+const generateCodePrompt = ai.definePrompt({
   name: 'generateCodePrompt',
   input: {
     schema: z.object({
@@ -147,7 +149,7 @@ const prompt = ai.definePrompt({
   prompt: `You are an expert web developer tasked with generating comprehensive, visually stunning, and feature-rich web applications based on user prompts.
 Follow these instructions STRICTLY:
 
-1.  **Output Format:** Generate a SINGLE, complete HTML file. This file MUST contain all necessary HTML structure, CSS styles (within <style> tags or inline), and JavaScript logic (within <script> tags). Do NOT generate separate files or use external file references (like <link rel="stylesheet"> or <script src="...">).
+1.  **Output Format:** Generate a SINGLE, complete HTML file. This file MUST contain all necessary HTML structure, CSS styles (within <style> tags or inline), and JavaScript logic (within <script> tags). Do NOT generate separate files or use external file references (like <link rel="stylesheet"> or <script src="...">). The output MUST start with \`<!DOCTYPE html>\` and end with \`</html>\`.
 2.  **Adhere to the 100 Rules:** You MUST follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
     ${HUNDRED_RULES}
 3.  **Interpret the Prompt Broadly & Massively Expand:** Based on the user's prompt, anticipate related features, consider edge cases, and build a complete, functional, and LARGE-SCALE mini-application or website within the single HTML file, guided by the 100 rules. Aim to generate THOUSANDS of lines of high-quality code.
@@ -162,17 +164,68 @@ Follow these instructions STRICTLY:
 5.  **Website-Level Complexity:** The final output should resemble a complete section of a modern website or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel.
 6.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required.
 7.  **No External Dependencies:** Do not include links to external libraries or frameworks unless explicitly requested and absolutely essential for the core functionality described (even then, prefer vanilla solutions if feasible). If a library like Tailwind is requested, embed the necessary CDN link or provide instructions, but default to inline/embedded styles.
-8.  **Structure:** The output must start with \`<!DOCTYPE html>\` and be a valid HTML document.
-9.  **Completeness:** Ensure the generated HTML code is complete and not truncated. Output the *entire* file content. Partial or incomplete code is unacceptable.
+8.  **Completeness:** Ensure the generated HTML code is complete and not truncated. Output the *entire* file content, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`. Partial or incomplete code is unacceptable.
 
 User Prompt:
 {{{prompt}}}
 
-Generated Code (Single HTML File, Thousands of lines, Advanced UI/UX, Complete and Un-truncated):
+Generated Code (Single HTML File, Thousands of lines, Advanced UI/UX, Complete and Un-truncated, must end with </html>):
 \`\`\`html
 {{code}}
 \`\`\``, // Expect the output directly within the html block
 });
+
+// Define the continuation prompt
+const continueCodePrompt = ai.definePrompt({
+  name: 'continueCodePrompt',
+  input: {
+    schema: z.object({
+      originalPrompt: z.string().describe('The original user prompt for code generation.'),
+      partialCode: z.string().describe('The incomplete code generated so far.'),
+    }),
+  },
+  output: {
+    schema: z.object({
+      continuation: z.string().describe('The rest of the HTML code, starting exactly where the partial code left off.'),
+    }),
+  },
+  prompt: `You are an expert web developer continuing the generation of a large HTML file. You previously generated the following partial code based on the original user prompt, but it was incomplete (it did not end with \`</html>\`).
+
+Original User Prompt:
+{{{originalPrompt}}}
+
+Partial Code Generated So Far:
+\`\`\`html
+{{{partialCode}}}
+\`\`\`
+
+**Your Task:** Continue generating the rest of the HTML code EXACTLY from where the partial code stopped. Do NOT repeat any part of the partial code. Ensure the final combined code (partial code + your continuation) is a single, valid, and complete HTML file ending with \`</html>\`. Adhere to all the rules and advanced UI/UX requirements from the original generation task.
+
+Continuation Code (Starts immediately after the end of partial code, completes the HTML file ending with </html>):
+\`\`\`html
+{{continuation}}
+\`\`\``,
+});
+
+
+// Helper function to check if HTML seems complete
+function isHtmlComplete(code: string): boolean {
+    const trimmedCode = code.trim();
+    // Simple check: does it end with </html>? More robust checks could be added.
+    return trimmedCode.endsWith('</html>');
+}
+
+// Helper function to clean up markdown backticks
+function cleanupCode(code: string): string {
+    let cleaned = code.trim();
+    if (cleaned.startsWith('```html')) {
+      cleaned = cleaned.substring(7).trimStart();
+    }
+    if (cleaned.endsWith('```')) {
+      cleaned = cleaned.substring(0, cleaned.length - 3).trimEnd();
+    }
+    return cleaned;
+}
 
 
 const generateCodeFlow = ai.defineFlow<
@@ -185,22 +238,49 @@ const generateCodeFlow = ai.defineFlow<
     outputSchema: GenerateCodeOutputSchema,
   },
   async input => {
-     // The prompt now requests the LLM to output the code directly in the desired format.
-     // We just need to call the prompt and return its output.
-     const { output } = await prompt(input);
+     let fullCode = '';
+     let attempts = 0;
 
-     // Ensure the output format is just the code string.
-     // The LLM is instructed to output the code within ```html ... ```
-     // We might need to clean up the backticks if the model includes them despite instructions.
-     let generatedHtml = output?.code || '';
-     if (generatedHtml.startsWith('```html')) {
-         generatedHtml = generatedHtml.substring(7); // Remove ```html
-     }
-     if (generatedHtml.endsWith('```')) {
-         generatedHtml = generatedHtml.substring(0, generatedHtml.length - 3); // Remove ```
+     // Initial generation attempt
+     let response = await generateCodePrompt(input);
+     let generatedHtml = cleanupCode(response.output?.code || '');
+     fullCode = generatedHtml;
+
+     // Check for completion and attempt continuation if needed
+     while (!isHtmlComplete(fullCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
+        attempts++;
+        console.log(`Code generation incomplete (attempt ${attempts}). Requesting continuation...`);
+
+        try {
+            const continuationResponse = await continueCodePrompt({
+                originalPrompt: input.prompt,
+                partialCode: fullCode, // Pass the code generated so far
+            });
+            const continuationHtml = cleanupCode(continuationResponse.output?.continuation || '');
+
+            if (continuationHtml) {
+                fullCode += continuationHtml; // Append the continuation
+                console.log(`Appended continuation (length: ${continuationHtml.length}). Total length: ${fullCode.length}`);
+            } else {
+                 console.warn(`Continuation attempt ${attempts} returned empty code.`);
+                 // Avoid infinite loop if continuation keeps returning empty
+                 break;
+            }
+        } catch (continuationError) {
+            console.error(`Error during continuation attempt ${attempts}:`, continuationError);
+             // Decide if you want to break or retry here. Breaking for now.
+             break;
+        }
      }
 
-     return { code: generatedHtml.trim() };
+     if (!isHtmlComplete(fullCode)) {
+        console.warn(`Code might still be incomplete after ${attempts} continuation attempts.`);
+        // Optionally, throw an error or return the partial code with a warning
+        // throw new Error(`Failed to generate complete code after ${MAX_CONTINUATION_ATTEMPTS} attempts.`);
+     } else {
+         console.log("Code generation appears complete.");
+     }
+
+     return { code: fullCode };
    }
 );
-
