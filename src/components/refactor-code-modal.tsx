@@ -121,8 +121,8 @@ export function RefactorCodeModal() {
 
   return (
     <Dialog open={isRefactorModalOpen} onOpenChange={setIsRefactorModalOpen}>
-      {/* Increased max-width */}
-      <DialogContent className="sm:max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[65vw]">
+      {/* Increased max-width and added scroll */}
+      <DialogContent className="sm:max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[65vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
              <Pencil className="h-5 w-5"/>
@@ -185,3 +185,4 @@ export function RefactorCodeModal() {
     </Dialog>
   );
 }
+
