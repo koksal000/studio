@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react'; // Added useMemo
 import { useCodeContext } from '@/context/code-context';
 import {
   Dialog,
@@ -13,11 +13,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Loader2, AlertCircle, Diff, Pencil } from 'lucide-react'; // Added Pencil
+import { Loader2, AlertCircle, Diff, Pencil, ArrowRightLeft } from 'lucide-react'; // Added Pencil, ArrowRightLeft
 import { ScrollArea } from './ui/scroll-area';
 import { Skeleton } from './ui/skeleton';
-// Assume a simple diff viewer component exists or use plain pre/code tags for now
-// import DiffViewer from 'react-diff-viewer'; // Example, install if needed
+import { Badge } from './ui/badge'; // Added Badge
+
+// Helper function to count lines
+const countLines = (text: string | null | undefined): number => {
+  return text ? text.split('\n').length : 0;
+};
 
 export function RefactorCodeModal() {
   const {
@@ -46,26 +50,31 @@ export function RefactorCodeModal() {
     }
   };
 
+  // Calculate line counts and difference
+  const originalLines = useMemo(() => countLines(generatedCode), [generatedCode]);
+  const refactoredLines = useMemo(() => countLines(refactoredCode), [refactoredCode]);
+  const lineDifference = useMemo(() => refactoredLines - originalLines, [originalLines, refactoredLines]);
+
   const renderDiff = () => {
     if (isRefactoring) {
-       return (
-         <div className="space-y-2 mt-4">
-           <Skeleton className="h-4 w-1/3" />
-           <Skeleton className="h-4 w-full" />
-           <Skeleton className="h-4 w-full" />
-           <Skeleton className="h-4 w-2/3" />
-         </div>
-       );
-     }
+      return (
+        <div className="space-y-2 mt-4">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      );
+    }
 
     if (refactorError) {
-       return (
-         <div className="mt-4 text-destructive text-sm p-2 bg-destructive/10 rounded-md flex items-center">
-           <AlertCircle className="h-4 w-4 mr-2 shrink-0" />
-           <span>{refactorError}</span>
-         </div>
-       );
-     }
+      return (
+        <div className="mt-4 text-destructive text-sm p-2 bg-destructive/10 rounded-md flex items-center">
+          <AlertCircle className="h-4 w-4 mr-2 shrink-0" />
+          <span>{refactorError}</span>
+        </div>
+      );
+    }
 
     if (!refactoredCode) {
       return (
@@ -75,67 +84,45 @@ export function RefactorCodeModal() {
       );
     }
 
-    // Basic side-by-side view using pre/code for simplicity
-    // Removed overflow-hidden from the grid container
+    // Basic side-by-side view using pre/code inside ScrollArea
     return (
-        <div className="mt-4 grid grid-cols-2 gap-4 border rounded-md p-2 max-h-[40vh]">
-            <div className="flex flex-col h-full"> {/* Ensure flex container takes height */}
-                <Label className="text-xs text-muted-foreground mb-1">Original Code</Label>
+      <div className="mt-4 border rounded-md">
+         {/* Header for line counts and difference */}
+         <div className="flex justify-between items-center px-3 py-2 border-b bg-muted/50 text-xs text-muted-foreground">
+           <span>Original ({originalLines} lines)</span>
+            <Badge variant={lineDifference === 0 ? "secondary" : (lineDifference > 0 ? "default" : "destructive")} className="flex items-center gap-1">
+                 <ArrowRightLeft className="h-3 w-3" />
+                 {lineDifference > 0 ? `+${lineDifference}` : lineDifference} lines
+            </Badge>
+           <span>Refactored ({refactoredLines} lines)</span>
+         </div>
+         {/* Code Comparison Area */}
+        <div className="grid grid-cols-2 gap-0 max-h-[45vh] overflow-hidden"> {/* Applied max-h here */}
+            <div className="flex flex-col h-full overflow-hidden border-r"> {/* Ensure flex container takes height */}
                 {/* Use h-full on ScrollArea */}
-                <ScrollArea className="flex-1 border rounded-md p-2 bg-muted/20 h-full">
-                   <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                <ScrollArea className="flex-1 p-2 bg-muted/20 h-full"> {/* Added h-full */}
+                   <pre className="text-xs font-mono whitespace-pre break-words"> {/* Removed whitespace-pre-wrap */}
                      <code>{generatedCode}</code>
                    </pre>
                 </ScrollArea>
             </div>
-            <div className="flex flex-col h-full"> {/* Ensure flex container takes height */}
-               <Label className="text-xs text-muted-foreground mb-1">Refactored Code</Label>
+            <div className="flex flex-col h-full overflow-hidden"> {/* Ensure flex container takes height */}
                 {/* Use h-full on ScrollArea */}
-                <ScrollArea className="flex-1 border rounded-md p-2 bg-green-500/10 h-full">
-                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                <ScrollArea className="flex-1 p-2 bg-green-500/10 h-full"> {/* Added h-full */}
+                  <pre className="text-xs font-mono whitespace-pre break-words"> {/* Removed whitespace-pre-wrap */}
                     <code>{refactoredCode}</code>
                   </pre>
                 </ScrollArea>
             </div>
         </div>
-    );
-    /* Example using react-diff-viewer (requires installation: npm install react-diff-viewer)
-    return (
-      <div className="mt-4 border rounded-md overflow-hidden max-h-[40vh]"> // Add max-h here
-        <ScrollArea className="h-full"> // Wrap DiffViewer in ScrollArea
-            <DiffViewer
-              oldValue={generatedCode || ''}
-              newValue={refactoredCode || ''}
-              splitView={true}
-              showDiffOnly={false} // Show full files
-              leftTitle="Original Code"
-              rightTitle="Refactored Code"
-              styles={{
-                 variables: {
-                   light: { // Adapt colors to your theme
-                     diffViewerBackground: 'hsl(var(--background))',
-                     diffViewerColor: 'hsl(var(--foreground))',
-                     addedBackground: 'hsl(145 63% 90%)', // Example green tint
-                     addedColor: 'hsl(145 63% 20%)',
-                     removedBackground: 'hsl(0 84% 90%)', // Example red tint
-                     removedColor: 'hsl(0 84% 30%)',
-                     wordAddedBackground: 'hsl(145 63% 80%)',
-                     wordRemovedBackground: 'hsl(0 84% 80%)',
-                     // ... other style overrides
-                   },
-                 },
-               }}
-            />
-        </ScrollArea>
       </div>
     );
-    */
   };
-
 
   return (
     <Dialog open={isRefactorModalOpen} onOpenChange={setIsRefactorModalOpen}>
-      <DialogContent className="sm:max-w-[80vw] md:max-w-[70vw] lg:max-w-[60vw] xl:max-w-[50vw]">
+      {/* Increased max-width */}
+      <DialogContent className="sm:max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[65vw]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
              <Pencil className="h-5 w-5"/>
