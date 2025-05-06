@@ -3,7 +3,7 @@
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
 import { generateCode } from '@/ai/flows/generate-code-from-prompt';
 import { refactorCode } from '@/ai/flows/refactor-code'; // Import refactor flow
-import JSZip from 'jszip';
+// import JSZip from 'jszip'; // Not used for single file download
 
 // Define the structure for generated files (now simplified for single file)
 export interface GeneratedFile {
@@ -68,12 +68,12 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
      updatePreviewInternal(parseGeneratedCode(generatedCode));
      // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [generatedCode]); // Update preview when the active code changes
+   }, [generatedCode]);
 
 
   // --- Utility Functions ---
   const parseGeneratedCode = (code: string): GeneratedFile[] => {
-    if (!code || code.trim() === '') {
+    if (!code || typeof code !== 'string' || code.trim() === '') {
       return [];
     }
     return [{ fileName: 'index.html', content: code.trim() }];
@@ -84,18 +84,24 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       URL.revokeObjectURL(previewUrl);
     }
 
-    if (files.length === 0 || !files[0].content) {
+    if (files.length === 0 || !files[0].content || typeof files[0].content !== 'string') {
       setPreviewUrl(null);
       return;
     }
 
     const htmlFile = files[0];
-    const blob = new Blob([htmlFile.content], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    setPreviewUrl(url);
+    try {
+      const blob = new Blob([htmlFile.content], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+    } catch (e) {
+      console.error("Error creating blob for preview:", e);
+      setPreviewUrl(null);
+      setError("Could not create preview from the generated content.");
+    }
      // Need to keep track of previewUrl for cleanup
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewUrl]); // Depend on previewUrl for cleanup
+  }, [previewUrl]);
 
 
   // --- Core Actions ---
@@ -111,21 +117,28 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setGeneratedFiles([]);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
     }
-    setPreviewUrl(null);
+
 
     try {
       const result = await generateCode({ prompt });
-      const singleHtmlContent = result.code;
-      setGeneratedCode(singleHtmlContent); // Set the initial generated code
-      setGeneratedFiles(parseGeneratedCode(singleHtmlContent));
-      // Preview updates via useEffect on generatedCode change
+      if (typeof result.code === 'string') {
+        setGeneratedCode(result.code);
+        setGeneratedFiles(parseGeneratedCode(result.code));
+      } else {
+        console.error('Error generating code: AI returned non-string code output.', result);
+        setError('Failed to generate code: AI returned an unexpected format. Please try again.');
+        setGeneratedCode('<!-- AI returned non-string code output -->');
+        setGeneratedFiles(parseGeneratedCode('<!-- AI returned non-string code output -->'));
+      }
     } catch (err) {
       console.error('Error generating code:', err);
-      setError(`Failed to generate code. ${err instanceof Error ? err.message : 'Please try again.'}`);
-      setGeneratedCode('');
+      const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'Please try again.'}`;
+      setError(errorMessage);
+      setGeneratedCode(`<!-- Error: ${errorMessage} -->`);
       setPreviousGeneratedCode(null);
-      setGeneratedFiles([]);
+      setGeneratedFiles(parseGeneratedCode(`<!-- Error: ${errorMessage} -->`));
     } finally {
       setIsLoading(false);
     }
@@ -147,11 +160,18 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       const result = await refactorCode({ code: generatedCode, prompt: refactorPrompt });
-      setRefactoredCode(result.refactoredCode); // Store the proposed refactored code
+      if (typeof result.refactoredCode === 'string') {
+        setRefactoredCode(result.refactoredCode);
+      } else {
+        console.error('Error refactoring code: AI returned non-string refactored code.', result);
+        setRefactorError('Failed to refactor code: AI returned an unexpected format.');
+        setRefactoredCode(`<!-- AI returned non-string refactored code -->\n${generatedCode}`);
+      }
     } catch (err) {
       console.error('Error refactoring code:', err);
-      setRefactorError(`Failed to refactor code. ${err instanceof Error ? err.message : 'Please try again.'}`);
-      setRefactoredCode(null);
+      const errorMessage = `Failed to refactor code. ${err instanceof Error ? err.message : 'Please try again.'}`;
+      setRefactorError(errorMessage);
+      setRefactoredCode(`<!-- Error: ${errorMessage} -->\n${generatedCode}`);
     } finally {
       setIsRefactoring(false);
     }
@@ -159,7 +179,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
   // Apply the refactored code as the current code
   const applyRefactor = () => {
-    if (refactoredCode !== null) {
+    if (refactoredCode !== null && typeof refactoredCode === 'string') {
       setPreviousGeneratedCode(generatedCode); // Save current code for undo
       setGeneratedCode(refactoredCode); // Apply refactored code
       setGeneratedFiles(parseGeneratedCode(refactoredCode));
@@ -167,6 +187,9 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setRefactoredCode(null); // Clear the proposed code
       setRefactorPrompt(''); // Clear the prompt
       setIsRefactorModalOpen(false); // Close modal after applying
+    } else {
+      // Handle case where refactoredCode might be null or not a string (though less likely with current logic)
+      setRefactorError("Cannot apply changes: No valid refactored code available.");
     }
   };
 
@@ -182,8 +205,8 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
   // Download function (uses current generatedCode)
   const downloadCode = async () => {
-    if (!generatedCode) {
-      setError('No code generated to download.'); // Use main error for consistency? Or a toast?
+    if (!generatedCode || typeof generatedCode !== 'string') {
+      setError('No valid code generated to download.');
       return;
     }
 
@@ -198,7 +221,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       URL.revokeObjectURL(link.href);
     } catch (err) {
       console.error('Error creating download link:', err);
-      setError('Failed to prepare file for download.'); // Use main error?
+      setError('Failed to prepare file for download.');
     }
   };
 

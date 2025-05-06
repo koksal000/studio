@@ -129,7 +129,13 @@ const GenerateCodeOutputSchema = z.object({
 export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>;
 
 export async function generateCode(input: GenerateCodeInput): Promise<GenerateCodeOutput> {
-  return generateCodeFlow(input);
+  try {
+    return await generateCodeFlow(input);
+  } catch (error) {
+    console.error("Critical error in generateCode flow:", error);
+    // Ensure a valid output is returned even in case of unexpected errors
+    return { code: `<!-- Error generating code: ${error instanceof Error ? error.message : String(error)} -->` };
+  }
 }
 
 // Define the initial generation prompt
@@ -216,71 +222,84 @@ function isHtmlComplete(code: string): boolean {
 }
 
 // Helper function to clean up markdown backticks
-function cleanupCode(code: string): string {
-    let cleaned = code.trim();
+function cleanupCode(code: string | undefined | null): string {
+    if (code === undefined || code === null) {
+        return '';
+    }
+    let cleaned = String(code).trim(); // Ensure it's a string before trimming
     if (cleaned.startsWith('```html')) {
       cleaned = cleaned.substring(7).trimStart();
     }
     if (cleaned.endsWith('```')) {
       cleaned = cleaned.substring(0, cleaned.length - 3).trimEnd();
     }
+    // Handle cases where ``` might be missing but html```` is present
+    if (cleaned.startsWith('html```')) {
+      cleaned = cleaned.substring(7).trimStart();
+    } else if (cleaned.startsWith('```')) { // Generic ``` removal
+      cleaned = cleaned.substring(3).trimStart();
+    }
     return cleaned;
 }
 
 
-const generateCodeFlow = ai.defineFlow<
-  typeof GenerateCodeInputSchema,
-  typeof GenerateCodeOutputSchema
->(
+const generateCodeFlow = ai.defineFlow(
   {
     name: 'generateCodeFlow',
     inputSchema: GenerateCodeInputSchema,
     outputSchema: GenerateCodeOutputSchema,
   },
-  async input => {
+  async (input): Promise<GenerateCodeOutput> => { // Explicitly type the return promise
      let fullCode = '';
      let attempts = 0;
 
-     // Initial generation attempt
-     let response = await generateCodePrompt(input);
-     let generatedHtml = cleanupCode(response.output?.code || '');
-     fullCode = generatedHtml;
+     try {
+       // Initial generation attempt
+       let response = await generateCodePrompt(input);
+       let generatedHtml = cleanupCode(response.output?.code);
+       fullCode = generatedHtml;
 
-     // Check for completion and attempt continuation if needed
-     while (!isHtmlComplete(fullCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
-        attempts++;
-        console.log(`Code generation incomplete (attempt ${attempts}). Requesting continuation...`);
+       // Check for completion and attempt continuation if needed
+       while (!isHtmlComplete(fullCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
+          attempts++;
+          console.log(`Code generation incomplete (attempt ${attempts}). Requesting continuation...`);
 
-        try {
-            const continuationResponse = await continueCodePrompt({
-                originalPrompt: input.prompt,
-                partialCode: fullCode, // Pass the code generated so far
-            });
-            const continuationHtml = cleanupCode(continuationResponse.output?.continuation || '');
+          try {
+              const continuationResponse = await continueCodePrompt({
+                  originalPrompt: input.prompt,
+                  partialCode: fullCode, // Pass the code generated so far
+              });
+              const continuationHtml = cleanupCode(continuationResponse.output?.continuation);
 
-            if (continuationHtml) {
-                fullCode += continuationHtml; // Append the continuation
-                console.log(`Appended continuation (length: ${continuationHtml.length}). Total length: ${fullCode.length}`);
-            } else {
-                 console.warn(`Continuation attempt ${attempts} returned empty code.`);
-                 // Avoid infinite loop if continuation keeps returning empty
-                 break;
-            }
-        } catch (continuationError) {
-            console.error(`Error during continuation attempt ${attempts}:`, continuationError);
-             // Decide if you want to break or retry here. Breaking for now.
-             break;
-        }
+              if (continuationHtml) {
+                  fullCode += continuationHtml; // Append the continuation
+                  console.log(`Appended continuation (length: ${continuationHtml.length}). Total length: ${fullCode.length}`);
+              } else {
+                   console.warn(`Continuation attempt ${attempts} returned empty code.`);
+                   // Avoid infinite loop if continuation keeps returning empty
+                   break;
+              }
+          } catch (continuationError) {
+              console.error(`Error during continuation attempt ${attempts}:`, continuationError);
+               // Decide if you want to break or retry here. Breaking for now.
+               // Return the partial code with an error comment to ensure schema is met
+               return { code: `${fullCode}\n<!-- Error during continuation: ${continuationError instanceof Error ? continuationError.message : String(continuationError)} -->` };
+          }
+       }
+
+       if (!isHtmlComplete(fullCode)) {
+          console.warn(`Code might still be incomplete after ${attempts} continuation attempts.`);
+          // Return the partial code with a warning comment
+          return { code: `${fullCode}\n<!-- Warning: Code generation might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->` };
+       } else {
+           console.log("Code generation appears complete.");
+       }
+
+       return { code: fullCode };
+     } catch (initialError) {
+        console.error("Error during initial code generation:", initialError);
+        // Return an error comment within the code structure
+        return { code: `<!-- Error during initial code generation: ${initialError instanceof Error ? initialError.message : String(initialError)} -->` };
      }
-
-     if (!isHtmlComplete(fullCode)) {
-        console.warn(`Code might still be incomplete after ${attempts} continuation attempts.`);
-        // Optionally, throw an error or return the partial code with a warning
-        // throw new Error(`Failed to generate complete code after ${MAX_CONTINUATION_ATTEMPTS} attempts.`);
-     } else {
-         console.log("Code generation appears complete.");
-     }
-
-     return { code: fullCode };
    }
 );

@@ -25,7 +25,13 @@ const RefactorCodeOutputSchema = z.object({
 export type RefactorCodeOutput = z.infer<typeof RefactorCodeOutputSchema>;
 
 export async function refactorCode(input: RefactorCodeInput): Promise<RefactorCodeOutput> {
-  return refactorCodeFlow(input);
+  try {
+    return await refactorCodeFlow(input);
+  } catch (error) {
+    console.error("Critical error in refactorCode flow:", error);
+    // Ensure a valid output is returned even in case of unexpected errors
+    return { refactoredCode: `<!-- Error refactoring code: ${error instanceof Error ? error.message : String(error)} -->\n${input.code}` };
+  }
 }
 
 // Define the initial refactoring prompt
@@ -109,18 +115,21 @@ function isHtmlComplete(code: string): boolean {
 }
 
 // Helper function to clean up markdown backticks
-function cleanupCode(code: string): string {
-    let cleaned = code.trim();
+function cleanupCode(code: string | undefined | null): string {
+    if (code === undefined || code === null) {
+        return '';
+    }
+    let cleaned = String(code).trim(); // Ensure it's a string before trimming
     // Handle potential markdown code blocks
     if (cleaned.startsWith('```html')) {
-      cleaned = cleaned.substring(7);
+      cleaned = cleaned.substring(7).trimStart();
       if (cleaned.endsWith('```')) {
-        cleaned = cleaned.substring(0, cleaned.length - 3);
+        cleaned = cleaned.substring(0, cleaned.length - 3).trimEnd();
       }
-    } else if (cleaned.startsWith('```')) {
-      cleaned = cleaned.substring(3);
+    } else if (cleaned.startsWith('```')) { // More generic ``` removal if 'html' isn't there
+      cleaned = cleaned.substring(3).trimStart();
       if (cleaned.endsWith('```')) {
-        cleaned = cleaned.substring(0, cleaned.length - 3);
+        cleaned = cleaned.substring(0, cleaned.length - 3).trimEnd();
       }
     }
      // Ensure final trim
@@ -128,58 +137,62 @@ function cleanupCode(code: string): string {
 }
 
 
-const refactorCodeFlow = ai.defineFlow<
-  typeof RefactorCodeInputSchema,
-  typeof RefactorCodeOutputSchema
->(
+const refactorCodeFlow = ai.defineFlow(
   {
     name: 'refactorCodeFlow',
     inputSchema: RefactorCodeInputSchema,
     outputSchema: RefactorCodeOutputSchema,
   },
-  async input => {
+  async (input): Promise<RefactorCodeOutput> => { // Explicitly type the return promise
     let fullRefactoredCode = '';
     let attempts = 0;
 
-    // Initial refactor attempt
-    let response = await refactorCodePrompt(input);
-    let generatedHtml = cleanupCode(response.output?.refactoredCode || '');
-    fullRefactoredCode = generatedHtml;
+    try {
+      // Initial refactor attempt
+      let response = await refactorCodePrompt(input);
+      let generatedHtml = cleanupCode(response.output?.refactoredCode);
+      fullRefactoredCode = generatedHtml;
 
-    // Check for completion and attempt continuation if needed
-    while (!isHtmlComplete(fullRefactoredCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
-       attempts++;
-       console.log(`Refactored code incomplete (attempt ${attempts}). Requesting continuation...`);
+      // Check for completion and attempt continuation if needed
+      while (!isHtmlComplete(fullRefactoredCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
+         attempts++;
+         console.log(`Refactored code incomplete (attempt ${attempts}). Requesting continuation...`);
 
-       try {
-           const continuationResponse = await continueRefactorCodePrompt({
-               originalCode: input.code,
-               refactorPrompt: input.prompt,
-               partialRefactoredCode: fullRefactoredCode, // Pass the code generated so far
-           });
-           const continuationHtml = cleanupCode(continuationResponse.output?.continuation || '');
+         try {
+             const continuationResponse = await continueRefactorCodePrompt({
+                 originalCode: input.code,
+                 refactorPrompt: input.prompt,
+                 partialRefactoredCode: fullRefactoredCode, // Pass the code generated so far
+             });
+             const continuationHtml = cleanupCode(continuationResponse.output?.continuation);
 
-           if (continuationHtml) {
-               fullRefactoredCode += '\n' + continuationHtml; // Append the continuation with a newline
-               console.log(`Appended refactor continuation (length: ${continuationHtml.length}). Total length: ${fullRefactoredCode.length}`);
-           } else {
-                console.warn(`Refactor continuation attempt ${attempts} returned empty code.`);
-                break; // Avoid infinite loop
-           }
-       } catch (continuationError) {
-           console.error(`Error during refactor continuation attempt ${attempts}:`, continuationError);
-           break; // Stop on error
-       }
+             if (continuationHtml) {
+                 fullRefactoredCode += '\n' + continuationHtml; // Append the continuation with a newline
+                 console.log(`Appended refactor continuation (length: ${continuationHtml.length}). Total length: ${fullRefactoredCode.length}`);
+             } else {
+                  console.warn(`Refactor continuation attempt ${attempts} returned empty code.`);
+                  break; // Avoid infinite loop
+             }
+         } catch (continuationError) {
+             console.error(`Error during refactor continuation attempt ${attempts}:`, continuationError);
+             // Return partial code with error comment
+             return { refactoredCode: `${fullRefactoredCode}\n<!-- Error during refactor continuation: ${continuationError instanceof Error ? continuationError.message : String(continuationError)} -->` };
+         }
+      }
+
+      if (!isHtmlComplete(fullRefactoredCode)) {
+          console.warn(`Refactored code might still be incomplete after ${attempts} continuation attempts.`);
+          // Return partial code with warning
+          return { refactoredCode: `${fullRefactoredCode}\n<!-- Warning: Refactored code might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->` };
+      } else {
+          console.log("Refactored code generation appears complete.");
+      }
+
+      return { refactoredCode: fullRefactoredCode };
+    } catch (initialError) {
+      console.error("Error during initial code refactoring:", initialError);
+      // Return an error comment along with the original code to satisfy schema
+      return { refactoredCode: `<!-- Error during initial code refactoring: ${initialError instanceof Error ? initialError.message : String(initialError)} -->\n${input.code}` };
     }
-
-    if (!isHtmlComplete(fullRefactoredCode)) {
-        console.warn(`Refactored code might still be incomplete after ${attempts} continuation attempts.`);
-        // Optionally throw an error
-        // throw new Error(`Failed to generate complete refactored code after ${MAX_CONTINUATION_ATTEMPTS} attempts.`);
-    } else {
-        console.log("Refactored code generation appears complete.");
-    }
-
-    return { refactoredCode: fullRefactoredCode };
   }
 );
