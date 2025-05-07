@@ -1,13 +1,20 @@
+
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useCodeContext } from '@/context/code-context';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Download, Clipboard, Check, Code, FileText, Undo, Pencil } from 'lucide-react'; // Added Undo, Pencil
+import { Download, Clipboard, Check, Code, FileText, Undo, Pencil, ListCollapse } from 'lucide-react'; // Added ListCollapse
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { RefactorCodeModal } from './refactor-code-modal'; // Import the new modal
+import { RefactorCodeModal } from './refactor-code-modal';
+import { Badge } from '@/components/ui/badge'; // Added Badge
+
+// Helper function to count lines
+const countLines = (text: string | null | undefined): number => {
+  return text ? text.split('\n').length : 0;
+};
 
 export function CodeOutput() {
   const {
@@ -15,12 +22,14 @@ export function CodeOutput() {
     isLoading,
     error,
     downloadCode,
-    undoRefactor, // Get undo function
-    previousGeneratedCode, // Get previous state to enable/disable undo
-    setIsRefactorModalOpen, // Function to open the modal
+    undoRefactor,
+    previousGeneratedCode,
+    setIsRefactorModalOpen,
   } = useCodeContext();
   const { toast } = useToast();
   const [isCopied, setIsCopied] = useState<boolean>(false);
+
+  const lineCount = useMemo(() => countLines(generatedCode), [generatedCode]);
 
   const handleCopy = async (content: string) => {
     if (!content) return;
@@ -59,7 +68,6 @@ export function CodeOutput() {
        );
     }
 
-    // Show initial placeholder/error state before first generation
     if (!generatedCode && !error) {
        return (
          <div className="flex items-center justify-center h-full text-muted-foreground p-4 text-center">
@@ -71,7 +79,6 @@ export function CodeOutput() {
          </div>
        );
     }
-    // Show error state if an error occurred and no code was generated
     if (error && !generatedCode) {
        return (
          <div className="flex items-center justify-center h-full text-destructive p-4 text-center">
@@ -84,12 +91,9 @@ export function CodeOutput() {
        );
      }
 
-
-    // Display the generated HTML code
     return (
        <div className="relative flex-1 p-0 m-0 h-full">
            <div className="absolute top-2 right-2 flex gap-2 z-10">
-             {/* Undo Button */}
              <Button
                variant="ghost"
                size="icon"
@@ -101,11 +105,10 @@ export function CodeOutput() {
              >
                <Undo className="h-4 w-4" />
              </Button>
-             {/* Edit/Refactor Button (triggers modal) */}
              <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setIsRefactorModalOpen(true)} // Open modal on click
+                onClick={() => setIsRefactorModalOpen(true)}
                 disabled={isLoading || !generatedCode}
                 aria-label="Refactor Code"
                 title="Refactor Code"
@@ -113,7 +116,6 @@ export function CodeOutput() {
               >
                 <Pencil className="h-4 w-4" />
               </Button>
-             {/* Copy Button */}
              <Button
                variant="ghost"
                size="icon"
@@ -125,7 +127,6 @@ export function CodeOutput() {
              >
                {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Clipboard className="h-4 w-4" />}
              </Button>
-             {/* Download Button */}
              <Button
                 variant="ghost"
                 size="icon"
@@ -139,8 +140,7 @@ export function CodeOutput() {
               </Button>
             </div>
            <ScrollArea className="h-full w-full">
-            {/* Use <pre><code> for proper code formatting */}
-            <pre className="text-sm p-4 pt-12 bg-muted/30 rounded-md overflow-auto font-mono whitespace-pre-wrap break-words h-full">
+            <pre className="text-sm p-4 pt-12 bg-muted/30 rounded-md overflow-auto font-mono whitespace-pre break-words h-full">
               <code>{generatedCode || '// No code generated yet...'}</code>
             </pre>
            </ScrollArea>
@@ -151,13 +151,17 @@ export function CodeOutput() {
   return (
     <div className="flex flex-col flex-1 h-1/2 border-b border-border overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b">
-         <div className="flex items-center">
-           <Code className="h-5 w-5 mr-2" />
-           <h2 className="text-lg font-semibold">Generated Code (index.html)</h2>
-         </div>
-         {/* Action Buttons Group */}
          <div className="flex items-center gap-2">
-            {/* Simplified Download Button */}
+           <Code className="h-5 w-5" />
+           <h2 className="text-lg font-semibold">Generated Code (index.html)</h2>
+            {generatedCode && !isLoading && (
+              <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                <ListCollapse className="h-3 w-3" />
+                {lineCount} lines
+              </Badge>
+            )}
+         </div>
+         <div className="flex items-center gap-2">
              <Button
                variant="outline"
                size="sm"
@@ -165,19 +169,17 @@ export function CodeOutput() {
                disabled={isLoading || !generatedCode}
              >
                <Download className="mr-2 h-4 w-4" />
-               Download HTML
+               Download
              </Button>
-              {/* Simplified Edit Button */}
              <Button
                variant="outline"
                size="sm"
-               onClick={() => setIsRefactorModalOpen(true)} // Open modal
+               onClick={() => setIsRefactorModalOpen(true)}
                disabled={isLoading || !generatedCode}
              >
                <Pencil className="mr-2 h-4 w-4" />
-               Edit Code
+               Edit
              </Button>
-             {/* Simplified Undo Button */}
              <Button
                variant="outline"
                size="sm"
@@ -185,14 +187,13 @@ export function CodeOutput() {
                disabled={!previousGeneratedCode}
              >
                <Undo className="mr-2 h-4 w-4" />
-               Undo Edit
+               Undo
              </Button>
          </div>
       </div>
       <div className="flex-1 relative overflow-hidden">
          {renderContent()}
       </div>
-      {/* Render the modal - it handles its own open state via context */}
       <RefactorCodeModal />
     </div>
   );
