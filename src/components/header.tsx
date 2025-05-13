@@ -80,6 +80,10 @@ async function inlineJS(doc: Document): Promise<Document> {
     nextDataScript.remove();
   }
   
+  // Remove Next.js development-specific scripts if any more are identified (e.g., HMR scripts)
+  const nextDevScripts = clonedDoc.querySelectorAll('script[src*="_next/static/chunks/webpack"], script[src*="_next/static/chunks/react-refresh"]');
+  nextDevScripts.forEach(script => script.remove());
+
   return clonedDoc;
 }
 
@@ -87,7 +91,7 @@ async function inlineJS(doc: Document): Promise<Document> {
 export function Header() {
   const { toast } = useToast();
 
-  const handleDownloadStaticSnapshot = async () => {
+  const handleDownloadClientSideHTML = async () => {
     try {
       if (typeof window === 'undefined' || typeof document === 'undefined') {
         toast({
@@ -99,8 +103,8 @@ export function Header() {
       }
 
       toast({
-        title: 'Statik Anlık Görüntü Hazırlanıyor...',
-        description: 'Uygulamanın statik bir HTML kopyası oluşturuluyor. Lütfen bekleyin. Bu kopya AI özelliklerini İÇERMEYECEKTİR.',
+        title: 'İstemci Tarafı HTML Oluşturuluyor...',
+        description: 'Uygulamanın istemci tarafı HTML kopyası oluşturuluyor. Lütfen bekleyin...',
         duration: 5000,
       });
 
@@ -110,21 +114,22 @@ export function Header() {
       // 2. Inline CSS
       newDoc = await inlineCSS(newDoc);
 
-      // 3. Inline JavaScript (with caveats - full Next.js interactivity is unlikely to be preserved)
+      // 3. Inline JavaScript
       newDoc = await inlineJS(newDoc);
       
       // 4. Add a prominent warning message to the downloaded HTML
       const warningScript = newDoc.createElement('script');
       warningScript.textContent = `
-        alert("ÖNEMLİ UYARI:\\n\\nBu, AI Code Weaver uygulamasının statik bir HTML anlık görüntüsüdür.\\n\\n- AI KOD ÜRETME ve DÜZENLEME ÖZELLİKLERİ BU DOSYADA ÇALIŞMAYACAKTIR.\\n- Bu dosya yalnızca uygulamanın o anki görsel yapısını ve temel istemci tarafı etkileşimlerini (varsa) gösterir.\\n- Tam işlevsellik ve AI özellikleri için lütfen orijinal AI Code Weaver uygulamasını kullanın.\\n\\nBu, Next.js tabanlı bir uygulamanın tamamen istemci tarafında çalışan, AI yeteneklerine sahip tek bir HTML dosyasına dönüştürülmesinin teknik sınırlamalarından kaynaklanmaktadır. AI işlemleri sunucu tarafı mantık ve güvenli API anahtarları gerektirir.");
-        console.warn("ÖNEMLİ UYARI: Bu, AI Code Weaver uygulamasının statik bir HTML anlık görüntüsüdür. AI kod üretme ve düzenleme özellikleri bu dosyada ÇALIŞMAYACAKTIR. Tam işlevsellik için lütfen orijinal uygulamayı kullanın.");
+        alert("ÖNEMLİ UYARI:\\n\\nBu, AI Code Weaver uygulamasının İSTEMCİ TARAFI için basitleştirilmiş bir HTML sürümüdür.\\n\\n- AI KOD ÜRETME ve DÜZENLEME ÖZELLİKLERİ BU DOSYADA ÇALIŞMAYACAKTIR.\\n  Bu özellikler, güvenli API anahtarları ve sunucu taraflı işlemler gerektirir ve bu statik dosyaya dahil edilemez.\\n- Bu dosya, uygulamanın o anki GÖRSEL YAPISINI ve temel İSTEMCİ TARAFI ETKİLEŞİMLERİNİ (AI olmayan) göstermeyi amaçlar.\\n- Tam işlevsellik ve AI özellikleri için lütfen orijinal AI Code Weaver uygulamasını (geliştirme ortamında veya dağıtılmış sürümünü) kullanın.\\n\\nBu, Next.js tabanlı, sunucu etkileşimli bir uygulamanın tamamen istemci tarafında çalışan tek bir HTML dosyasına dönüştürülmesinin teknik sınırlamalarından kaynaklanmaktadır. Bu sürüm, Next.js'in sunucu tarafı yeteneklerini kopyalamaz, sadece o anki sayfanın bir görüntüsünü alır ve varlıkları gömer.");
+        console.warn("ÖNEMLİ UYARI: Bu, AI Code Weaver uygulamasının istemci tarafı için basitleştirilmiş bir HTML sürümüdür. AI kod üretme ve düzenleme özellikleri bu dosyada ÇALIŞMAYACAKTIR. Bu sürüm, Next.js'in sunucu tarafı yeteneklerini kopyalamaz. Tam işlevsellik için lütfen orijinal uygulamayı kullanın.");
       `;
       // Prepend to body to ensure it runs early
       if (newDoc.body) {
         newDoc.body.prepend(warningScript);
-      } else if (newDoc.documentElement) {
+      } else if (newDoc.documentElement) { // Fallback if body doesn't exist yet (less likely for a full document clone)
         const tempBody = newDoc.createElement('body');
         tempBody.prepend(warningScript);
+        // Move existing children of documentElement to the new body
         while (newDoc.documentElement.firstChild) {
             tempBody.appendChild(newDoc.documentElement.firstChild);
         }
@@ -138,23 +143,23 @@ export function Header() {
       const blob = new Blob([finalHtml], { type: 'text/html;charset=utf-8' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = 'ai-code-weaver-static-snapshot.html';
+      link.download = 'ai-code-weaver-client-version.html'; // Updated filename
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
 
       toast({
-        title: 'Statik Anlık Görüntü İndirildi',
-        description: 'ai-code-weaver-static-snapshot.html indirildi. Unutmayın, bu yalnızca statik bir kopyadır ve AI özellikleri çalışmayacaktır.',
+        title: 'İstemci Tarafı HTML İndirildi',
+        description: 'ai-code-weaver-client-version.html indirildi. Unutmayın, bu yalnızca istemci tarafı bir kopyadır ve AI özellikleri çalışmayacaktır.',
         duration: 10000,
       });
 
     } catch (error) {
-      console.error("Error preparing project static snapshot for download:", error);
+      console.error("Error preparing client-side HTML for download:", error);
       toast({
         title: 'İndirme Hatası',
-        description: `Proje anlık görüntüsü oluşturulamadı. ${error instanceof Error ? error.message : 'Bilinmeyen bir hata oluştu.'}`,
+        description: `İstemci tarafı HTML oluşturulamadı. ${error instanceof Error ? error.message : 'Bilinmeyen bir hata oluştu.'}`,
         variant: 'destructive',
       });
     }
@@ -170,7 +175,7 @@ export function Header() {
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={handleDownloadStaticSnapshot} // Changed function name
+          onClick={handleDownloadClientSideHTML} 
           className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
         >
           <DownloadCloud className="mr-2 h-4 w-4" />
@@ -180,4 +185,3 @@ export function Header() {
     </header>
   );
 }
-
