@@ -1,3 +1,4 @@
+
 'use client'; // Make this a client component to use onClick with browser APIs
 
 import React from 'react';
@@ -86,7 +87,7 @@ async function inlineJS(doc: Document): Promise<Document> {
 export function Header() {
   const { toast } = useToast();
 
-  const handleDownloadProjectApp = async () => {
+  const handleDownloadStaticSnapshot = async () => {
     try {
       if (typeof window === 'undefined' || typeof document === 'undefined') {
         toast({
@@ -98,8 +99,8 @@ export function Header() {
       }
 
       toast({
-        title: 'Proje Anlık Görüntüsü Hazırlanıyor...',
-        description: 'Mevcut uygulamanın statik bir HTML anlık görüntüsü oluşturuluyor. Lütfen bekleyin.',
+        title: 'Statik Anlık Görüntü Hazırlanıyor...',
+        description: 'Uygulamanın statik bir HTML kopyası oluşturuluyor. Lütfen bekleyin. Bu kopya AI özelliklerini İÇERMEYECEKTİR.',
         duration: 5000,
       });
 
@@ -113,19 +114,17 @@ export function Header() {
       newDoc = await inlineJS(newDoc);
       
       // 4. Add a prominent warning message to the downloaded HTML
-      const warningMessage = newDoc.createElement('script');
-      warningMessage.textContent = `
-        alert("UYARI: Bu statik bir HTML anlık görüntüsüdür. AI Kod Üretici uygulamasının AI kod üretimi ve diğer dinamik özellikleri bu dosyada ÇALIŞMAYACAKTIR. Bu anlık görüntü öncelikle görsel ve yapısal inceleme amaçlıdır. Tam işlevsellik için lütfen orijinal uygulamayı kullanın.");
-        console.warn("UYARI: Bu statik bir HTML anlık görüntüsüdür. AI kod üretimi ve diğer dinamik özellikleri bu dosyada ÇALIŞMAYACAKTIR. Tam işlevsellik için lütfen orijinal uygulamayı kullanın.");
+      const warningScript = newDoc.createElement('script');
+      warningScript.textContent = `
+        alert("ÖNEMLİ UYARI:\\n\\nBu, AI Code Weaver uygulamasının statik bir HTML anlık görüntüsüdür.\\n\\n- AI KOD ÜRETME ve DÜZENLEME ÖZELLİKLERİ BU DOSYADA ÇALIŞMAYACAKTIR.\\n- Bu dosya yalnızca uygulamanın o anki görsel yapısını ve temel istemci tarafı etkileşimlerini (varsa) gösterir.\\n- Tam işlevsellik ve AI özellikleri için lütfen orijinal AI Code Weaver uygulamasını kullanın.\\n\\nBu, Next.js tabanlı bir uygulamanın tamamen istemci tarafında çalışan, AI yeteneklerine sahip tek bir HTML dosyasına dönüştürülmesinin teknik sınırlamalarından kaynaklanmaktadır. AI işlemleri sunucu tarafı mantık ve güvenli API anahtarları gerektirir.");
+        console.warn("ÖNEMLİ UYARI: Bu, AI Code Weaver uygulamasının statik bir HTML anlık görüntüsüdür. AI kod üretme ve düzenleme özellikleri bu dosyada ÇALIŞMAYACAKTIR. Tam işlevsellik için lütfen orijinal uygulamayı kullanın.");
       `;
       // Prepend to body to ensure it runs early
       if (newDoc.body) {
-        newDoc.body.prepend(warningMessage);
+        newDoc.body.prepend(warningScript);
       } else if (newDoc.documentElement) {
-        // Fallback if body is not directly available (should be rare for full document)
         const tempBody = newDoc.createElement('body');
-        tempBody.prepend(warningMessage);
-        // Append existing children of documentElement to the new body
+        tempBody.prepend(warningScript);
         while (newDoc.documentElement.firstChild) {
             tempBody.appendChild(newDoc.documentElement.firstChild);
         }
@@ -139,20 +138,20 @@ export function Header() {
       const blob = new Blob([finalHtml], { type: 'text/html;charset=utf-8' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = 'ai-code-weaver-snapshot.html';
+      link.download = 'ai-code-weaver-static-snapshot.html';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
 
       toast({
-        title: 'Proje Anlık Görüntüsü İndirildi',
-        description: 'ai-code-weaver-snapshot.html indirildi. Unutmayın, bu statik bir kopyadır ve AI özellikleri çalışmayacaktır.',
+        title: 'Statik Anlık Görüntü İndirildi',
+        description: 'ai-code-weaver-static-snapshot.html indirildi. Unutmayın, bu yalnızca statik bir kopyadır ve AI özellikleri çalışmayacaktır.',
         duration: 10000,
       });
 
     } catch (error) {
-      console.error("Error preparing project snapshot for download:", error);
+      console.error("Error preparing project static snapshot for download:", error);
       toast({
         title: 'İndirme Hatası',
         description: `Proje anlık görüntüsü oluşturulamadı. ${error instanceof Error ? error.message : 'Bilinmeyen bir hata oluştu.'}`,
@@ -171,13 +170,14 @@ export function Header() {
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={handleDownloadProjectApp}
+          onClick={handleDownloadStaticSnapshot} // Changed function name
           className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
         >
           <DownloadCloud className="mr-2 h-4 w-4" />
-          Projeyi İndir (HTML Snapshot - Sınırlı İşlevsellik)
+          Projeyi İndir
         </Button>
       </div>
     </header>
   );
 }
+
