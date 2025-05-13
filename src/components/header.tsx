@@ -117,21 +117,52 @@ export function Header() {
       newDoc = await inlineJS(newDoc);
       
       // 4. Add a prominent warning message to the downloaded HTML
-      const warningScript = newDoc.createElement('script');
-      warningScript.textContent = `
-        alert("ÖNEMLİ UYARI: AI Code Weaver - İSTEMCİ TARAFI ANLIK GÖRÜNTÜSÜ\\n\\nBu dosya, AI Code Weaver uygulamasının o anki GÖRSEL ARAYÜZÜNÜN bir HTML kopyasıdır ve SADECE İSTEMCİ TARAFINDA çalışır.\\n\\nİŞLEVSELLİK SINIRLAMALARI:\\n- AI KOD ÜRETME, DÜZENLEME ve AÇIKLAMA özellikleri bu dosyada KESİNLİKLE ÇALIŞMAYACAKTIR.\\n  Bu özellikler, güvenli API anahtarları ve normalde bir sunucuda çalışan özel AI modelleri gerektirir. Bunlar, güvenlik ve teknik nedenlerle bir istemci tarafı HTML dosyasına gömülemez.\\n- Bu dosya, uygulamanın temel GÖRSEL yapısını ve AI olmayan bazı basit istemci tarafı etkileşimlerini (örneğin, buton tıklamaları, metin girişi gibi UI elemanları) göstermeyi amaçlar.\\n- Tam işlevsellik ve AI özellikleri için lütfen orijinal AI Code Weaver uygulamasını (bir geliştirme ortamında veya dağıtılmış tam sürümünü) kullanın.\\n\\nBu, Next.js gibi modern, sunucu etkileşimli bir web uygulamasının, tüm özellikleriyle birlikte tek bir, tamamen istemci tarafında çalışan statik HTML dosyasına dönüştürülmesinin teknik zorlukları ve güvenlik kısıtlamalarından kaynaklanmaktadır. Bu sürüm, sunucu tarafı mantığını ve Next.js'in dinamik yeteneklerini KOPYALAMAZ; yalnızca o anki sayfanın bir görüntüsünü alır ve bazı varlıkları gömmeye çalışır.");
-        console.warn("ÖNEMLİ UYARI: Bu, AI Code Weaver uygulamasının istemci tarafı için basitleştirilmiş bir HTML anlık görüntüsüdür. AI kod üretme, düzenleme ve açıklama özellikleri bu dosyada ÇALIŞMAYACAKTIR. Bu sürüm, Next.js'in sunucu tarafı yeteneklerini veya AI backend'ini kopyalamaz. Tam işlevsellik için lütfen orijinal uygulamayı kullanın.");
+      const warningDiv = newDoc.createElement('div');
+      warningDiv.setAttribute('style', `
+        position: fixed; 
+        top: 0; 
+        left: 0; 
+        width: 100%; 
+        background-color: #ffc107; /* Amber */
+        color: #000; 
+        padding: 20px; 
+        text-align: center; 
+        font-size: 16px; 
+        font-family: Arial, sans-serif;
+        z-index: 10000; 
+        border-bottom: 2px solid #c79100;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      `);
+      warningDiv.innerHTML = `
+        <strong>ÖNEMLİ UYARI: AI Code Weaver - İSTEMCİ TARAFI ANLIK GÖRÜNTÜSÜ</strong><br><br>
+        Bu dosya, AI Code Weaver uygulamasının o anki GÖRSEL ARAYÜZÜNÜN bir HTML kopyasıdır ve <strong>SADECE İSTEMCİ TARAFINDA</strong> çalışır.<br><br>
+        <strong>İŞLEVSELLİK SINIRLAMALARI:</strong><br>
+        <ul>
+          <li style="margin-bottom: 5px;"><strong>YAPAY ZEKA (AI) ÖZELLİKLERİ (Kod Üretme, Düzenleme, Açıklama vb.):</strong> Bu özellikler bu dosyada <strong>KESİNLİKLE ÇALIŞMAYACAKTIR.</strong> Bu özellikler, güvenli API anahtarları ve normalde bir sunucuda çalışan özel AI modelleri gerektirir. Bunlar, güvenlik ve teknik nedenlerle bir istemci tarafı HTML dosyasına gömülemez.</li>
+          <li style="margin-bottom: 5px;"><strong>AMAÇ:</strong> Bu dosya, uygulamanın temel GÖRSEL yapısını ve AI olmayan bazı basit istemci tarafı etkileşimlerini (örneğin, buton tıklamaları, metin girişi gibi UI elemanları) göstermeyi amaçlar.</li>
+          <li><strong>TAM İŞLEVSELLİK:</strong> Tam işlevsellik ve AI özellikleri için lütfen orijinal AI Code Weaver uygulamasını (bir geliştirme ortamında veya dağıtılmış tam sürümünü) kullanın.</li>
+        </ul>
+        <br>
+        Bu durum, Next.js gibi modern, sunucu etkileşimli bir web uygulamasının, tüm özellikleriyle birlikte tek bir, tamamen istemci tarafında çalışan statik HTML dosyasına dönüştürülmesinin teknik zorlukları ve güvenlik kısıtlamalarından kaynaklanmaktadır. Bu sürüm, sunucu tarafı mantığını ve Next.js'in dinamik yeteneklerini <strong>KOPYALAMAZ</strong>; yalnızca o anki sayfanın bir görüntüsünü alır ve bazı varlıkları gömmeye çalışır.
+        <br><br>
+        <button onclick="this.parentElement.style.display='none';" style="padding: 8px 15px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">Anladım, Kapat</button>
       `;
-      // Prepend to body to ensure it runs early
+      
+      // Prepend to body to ensure it's visible
       if (newDoc.body) {
-        newDoc.body.prepend(warningScript);
+        newDoc.body.prepend(warningDiv);
       } else if (newDoc.documentElement) { 
         const tempBody = newDoc.createElement('body');
-        tempBody.prepend(warningScript);
-        while (newDoc.documentElement.firstChild) {
+        tempBody.prepend(warningDiv);
+        // Move existing children of documentElement to the new body
+        // This handles cases where body might not exist or content is directly under <html>
+        while (newDoc.documentElement.firstChild && newDoc.documentElement.firstChild !== tempBody) {
             tempBody.appendChild(newDoc.documentElement.firstChild);
         }
-        newDoc.documentElement.appendChild(tempBody);
+        // Ensure the new body is appended to documentElement
+        if(!newDoc.documentElement.querySelector('body')){ // Check if body was already appended
+            newDoc.documentElement.appendChild(tempBody);
+        }
       }
 
 
@@ -141,7 +172,7 @@ export function Header() {
       const blob = new Blob([finalHtml], { type: 'text/html;charset=utf-8' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = 'ai-code-weaver-client-snapshot.html'; // Updated filename
+      link.download = 'ai-code-weaver-client-snapshot.html';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
