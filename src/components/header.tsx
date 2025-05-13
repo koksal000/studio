@@ -1,4 +1,3 @@
-
 'use client'; // Make this a client component to use onClick with browser APIs
 
 import React from 'react';
@@ -103,7 +102,7 @@ export function Header() {
       }
 
       toast({
-        title: 'İstemci Tarafı HTML Oluşturuluyor...',
+        title: 'İstemci Tarafı HTML Anlık Görüntüsü Oluşturuluyor...',
         description: 'Uygulamanın istemci tarafı HTML kopyası oluşturuluyor. Lütfen bekleyin...',
         duration: 5000,
       });
@@ -120,16 +119,15 @@ export function Header() {
       // 4. Add a prominent warning message to the downloaded HTML
       const warningScript = newDoc.createElement('script');
       warningScript.textContent = `
-        alert("ÖNEMLİ UYARI:\\n\\nBu, AI Code Weaver uygulamasının İSTEMCİ TARAFI için basitleştirilmiş bir HTML sürümüdür.\\n\\n- AI KOD ÜRETME ve DÜZENLEME ÖZELLİKLERİ BU DOSYADA ÇALIŞMAYACAKTIR.\\n  Bu özellikler, güvenli API anahtarları ve sunucu taraflı işlemler gerektirir ve bu statik dosyaya dahil edilemez.\\n- Bu dosya, uygulamanın o anki GÖRSEL YAPISINI ve temel İSTEMCİ TARAFI ETKİLEŞİMLERİNİ (AI olmayan) göstermeyi amaçlar.\\n- Tam işlevsellik ve AI özellikleri için lütfen orijinal AI Code Weaver uygulamasını (geliştirme ortamında veya dağıtılmış sürümünü) kullanın.\\n\\nBu, Next.js tabanlı, sunucu etkileşimli bir uygulamanın tamamen istemci tarafında çalışan tek bir HTML dosyasına dönüştürülmesinin teknik sınırlamalarından kaynaklanmaktadır. Bu sürüm, Next.js'in sunucu tarafı yeteneklerini kopyalamaz, sadece o anki sayfanın bir görüntüsünü alır ve varlıkları gömer.");
-        console.warn("ÖNEMLİ UYARI: Bu, AI Code Weaver uygulamasının istemci tarafı için basitleştirilmiş bir HTML sürümüdür. AI kod üretme ve düzenleme özellikleri bu dosyada ÇALIŞMAYACAKTIR. Bu sürüm, Next.js'in sunucu tarafı yeteneklerini kopyalamaz. Tam işlevsellik için lütfen orijinal uygulamayı kullanın.");
+        alert("ÖNEMLİ UYARI: AI Code Weaver - İSTEMCİ TARAFI ANLIK GÖRÜNTÜSÜ\\n\\nBu dosya, AI Code Weaver uygulamasının o anki GÖRSEL ARAYÜZÜNÜN bir HTML kopyasıdır ve SADECE İSTEMCİ TARAFINDA çalışır.\\n\\nİŞLEVSELLİK SINIRLAMALARI:\\n- AI KOD ÜRETME, DÜZENLEME ve AÇIKLAMA özellikleri bu dosyada KESİNLİKLE ÇALIŞMAYACAKTIR.\\n  Bu özellikler, güvenli API anahtarları ve normalde bir sunucuda çalışan özel AI modelleri gerektirir. Bunlar, güvenlik ve teknik nedenlerle bir istemci tarafı HTML dosyasına gömülemez.\\n- Bu dosya, uygulamanın temel GÖRSEL yapısını ve AI olmayan bazı basit istemci tarafı etkileşimlerini (örneğin, buton tıklamaları, metin girişi gibi UI elemanları) göstermeyi amaçlar.\\n- Tam işlevsellik ve AI özellikleri için lütfen orijinal AI Code Weaver uygulamasını (bir geliştirme ortamında veya dağıtılmış tam sürümünü) kullanın.\\n\\nBu, Next.js gibi modern, sunucu etkileşimli bir web uygulamasının, tüm özellikleriyle birlikte tek bir, tamamen istemci tarafında çalışan statik HTML dosyasına dönüştürülmesinin teknik zorlukları ve güvenlik kısıtlamalarından kaynaklanmaktadır. Bu sürüm, sunucu tarafı mantığını ve Next.js'in dinamik yeteneklerini KOPYALAMAZ; yalnızca o anki sayfanın bir görüntüsünü alır ve bazı varlıkları gömmeye çalışır.");
+        console.warn("ÖNEMLİ UYARI: Bu, AI Code Weaver uygulamasının istemci tarafı için basitleştirilmiş bir HTML anlık görüntüsüdür. AI kod üretme, düzenleme ve açıklama özellikleri bu dosyada ÇALIŞMAYACAKTIR. Bu sürüm, Next.js'in sunucu tarafı yeteneklerini veya AI backend'ini kopyalamaz. Tam işlevsellik için lütfen orijinal uygulamayı kullanın.");
       `;
       // Prepend to body to ensure it runs early
       if (newDoc.body) {
         newDoc.body.prepend(warningScript);
-      } else if (newDoc.documentElement) { // Fallback if body doesn't exist yet (less likely for a full document clone)
+      } else if (newDoc.documentElement) { 
         const tempBody = newDoc.createElement('body');
         tempBody.prepend(warningScript);
-        // Move existing children of documentElement to the new body
         while (newDoc.documentElement.firstChild) {
             tempBody.appendChild(newDoc.documentElement.firstChild);
         }
@@ -143,23 +141,23 @@ export function Header() {
       const blob = new Blob([finalHtml], { type: 'text/html;charset=utf-8' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = 'ai-code-weaver-client-version.html'; // Updated filename
+      link.download = 'ai-code-weaver-client-snapshot.html'; // Updated filename
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
 
       toast({
-        title: 'İstemci Tarafı HTML İndirildi',
-        description: 'ai-code-weaver-client-version.html indirildi. Unutmayın, bu yalnızca istemci tarafı bir kopyadır ve AI özellikleri çalışmayacaktır.',
+        title: 'İstemci Tarafı HTML Anlık Görüntüsü İndirildi',
+        description: 'ai-code-weaver-client-snapshot.html indirildi. Unutmayın, bu yalnızca istemci tarafı bir kopyadır ve AI özellikleri çalışmayacaktır.',
         duration: 10000,
       });
 
     } catch (error) {
-      console.error("Error preparing client-side HTML for download:", error);
+      console.error("Error preparing client-side HTML snapshot for download:", error);
       toast({
         title: 'İndirme Hatası',
-        description: `İstemci tarafı HTML oluşturulamadı. ${error instanceof Error ? error.message : 'Bilinmeyen bir hata oluştu.'}`,
+        description: `İstemci tarafı HTML anlık görüntüsü oluşturulamadı. ${error instanceof Error ? error.message : 'Bilinmeyen bir hata oluştu.'}`,
         variant: 'destructive',
       });
     }
