@@ -1,11 +1,14 @@
+// src/components/header.tsx
 'use client'; // Make this a client component to use onClick with browser APIs
 
 import React from 'react';
-import { Bot, DownloadCloud } from 'lucide-react'; // Use appropriate icons
+import { Bot, Copy } from 'lucide-react'; // Changed DownloadCloud to Copy
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
 
+// This function is no longer directly used by the main header button,
+// but kept in case it's needed elsewhere or for future reference.
 async function inlineCSS(doc: Document): Promise<Document> {
   const clonedDoc = doc.cloneNode(true) as Document;
   const linkElements = Array.from(clonedDoc.querySelectorAll('link[rel="stylesheet"]'));
@@ -15,7 +18,6 @@ async function inlineCSS(doc: Document): Promise<Document> {
     if (href) {
       try {
         const absoluteUrl = new URL(href, clonedDoc.baseURI).href;
-        // Only fetch if it's a relative path, absolute path from same origin, or data URI
         if (!href.startsWith('http') || new URL(absoluteUrl).origin === window.location.origin || absoluteUrl.startsWith('data:')) {
           const response = await fetch(absoluteUrl);
           if (response.ok) {
@@ -37,24 +39,23 @@ async function inlineCSS(doc: Document): Promise<Document> {
   return clonedDoc;
 }
 
+// This function is no longer directly used by the main header button,
+// but kept in case it's needed elsewhere or for future reference.
 async function inlineJS(doc: Document): Promise<Document> {
   const clonedDoc = doc.cloneNode(true) as Document;
   const scriptElements = Array.from(clonedDoc.querySelectorAll('script[src]'));
 
   for (const script of scriptElements) {
     const src = script.getAttribute('src');
-    // Only process scripts with src and not type application/json (like Next.js data islands)
-    if (src && !script.type?.includes('application/json')) { 
+    if (src && !script.type?.includes('application/json')) {
       try {
         const absoluteUrl = new URL(src, clonedDoc.baseURI).href;
-         // Only fetch if it's a relative path or absolute path from same origin
         if (!src.startsWith('http') || new URL(absoluteUrl).origin === window.location.origin) {
             const response = await fetch(absoluteUrl);
             if (response.ok) {
                 const jsText = await response.text();
                 const newScriptElement = clonedDoc.createElement('script');
                 if (script.id) newScriptElement.id = script.id;
-                // Copy attributes like type, defer, async if they exist
                 if (script.type) newScriptElement.type = script.type;
                 if (script.hasAttribute('defer')) newScriptElement.defer = true;
                 if (script.hasAttribute('async')) newScriptElement.async = true;
@@ -72,51 +73,39 @@ async function inlineJS(doc: Document): Promise<Document> {
       }
     }
   }
-  // Remove Next.js specific script __NEXT_DATA__ as it's not useful in a static context
-  // and might cause issues or unnecessary bloat.
   const nextDataScript = clonedDoc.getElementById('__NEXT_DATA__');
   if (nextDataScript) {
     nextDataScript.remove();
   }
-  
-  // Remove Next.js development-specific scripts if any more are identified (e.g., HMR scripts)
   const nextDevScripts = clonedDoc.querySelectorAll('script[src*="_next/static/chunks/webpack"], script[src*="_next/static/chunks/react-refresh"]');
   nextDevScripts.forEach(script => script.remove());
 
   return clonedDoc;
 }
 
+// This function is no longer directly used by the main header button,
+// but kept in case it's needed elsewhere or for future reference.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function downloadClientSideHTMLSnapshot() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      // This function should not be called server-side, but as a safeguard.
+      // The toast hook might also not be available server-side.
+      console.error('Download can only be initiated from the browser.');
+      return;
+    }
+    const { toast } = useToast(); // Moved toast init inside for client-side only context
 
-export function Header() {
-  const { toast } = useToast();
+    toast({
+      title: 'İstemci Tarafı HTML Anlık Görüntüsü Oluşturuluyor...',
+      description: 'Uygulamanın istemci tarafı HTML kopyası oluşturuluyor. Lütfen bekleyin...',
+      duration: 5000,
+    });
 
-  const handleDownloadClientSideHTML = async () => {
     try {
-      if (typeof window === 'undefined' || typeof document === 'undefined') {
-        toast({
-          title: 'Hata',
-          description: 'İndirme yalnızca tarayıcıdan başlatılabilir.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      toast({
-        title: 'İstemci Tarafı HTML Anlık Görüntüsü Oluşturuluyor...',
-        description: 'Uygulamanın istemci tarafı HTML kopyası oluşturuluyor. Lütfen bekleyin...',
-        duration: 5000,
-      });
-
-      // 1. Clone the entire current document
       let newDoc = new DOMParser().parseFromString(document.documentElement.outerHTML, 'text/html');
-
-      // 2. Inline CSS
       newDoc = await inlineCSS(newDoc);
-
-      // 3. Inline JavaScript
       newDoc = await inlineJS(newDoc);
       
-      // 4. Add a prominent warning message to the downloaded HTML
       const warningDiv = newDoc.createElement('div');
       warningDiv.setAttribute('style', `
         position: fixed; 
@@ -148,27 +137,20 @@ export function Header() {
         <button onclick="this.parentElement.style.display='none';" style="padding: 8px 15px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">Anladım, Kapat</button>
       `;
       
-      // Prepend to body to ensure it's visible
       if (newDoc.body) {
         newDoc.body.prepend(warningDiv);
       } else if (newDoc.documentElement) { 
         const tempBody = newDoc.createElement('body');
         tempBody.prepend(warningDiv);
-        // Move existing children of documentElement to the new body
-        // This handles cases where body might not exist or content is directly under <html>
         while (newDoc.documentElement.firstChild && newDoc.documentElement.firstChild !== tempBody) {
             tempBody.appendChild(newDoc.documentElement.firstChild);
         }
-        // Ensure the new body is appended to documentElement
-        if(!newDoc.documentElement.querySelector('body')){ // Check if body was already appended
+        if(!newDoc.documentElement.querySelector('body')){
             newDoc.documentElement.appendChild(tempBody);
         }
       }
 
-
-      // 5. Serialize the modified document
       const finalHtml = `<!DOCTYPE html>\n${newDoc.documentElement.outerHTML}`;
-      
       const blob = new Blob([finalHtml], { type: 'text/html;charset=utf-8' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -192,6 +174,30 @@ export function Header() {
         variant: 'destructive',
       });
     }
+}
+
+
+export function Header() {
+  const { toast } = useToast();
+
+  const handleCopyLocalDevUrl = async () => {
+    const localUrl = 'http://localhost:9002'; // Port from package.json dev script
+    try {
+      await navigator.clipboard.writeText(localUrl);
+      toast({
+        title: 'Lokal Geliştirme URLsi Kopyalandı!',
+        description: `"${localUrl}" panoya kopyalandı. Tam işlevsellik için projenin geliştirme sunucusunu (örn: 'npm run dev') başlatmanız ve ardından bu URL'yi tarayıcınızda açmanız gerekir. Bu işlem, sunucunun bilgisayarınızda çalışmasını gerektirir.`,
+        duration: 15000, // Longer duration for more complex message
+      });
+    } catch (err) {
+      console.error('Failed to copy local dev URL:', err);
+      toast({
+        title: 'Kopyalama Başarısız',
+        description: 'Lokal geliştirme URLsi panoya kopyalanamadı. Lütfen manuel olarak kopyalayın: ' + localUrl,
+        variant: 'destructive',
+        duration: 10000,
+      });
+    }
   };
 
   return (
@@ -204,11 +210,12 @@ export function Header() {
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={handleDownloadClientSideHTML} 
+          onClick={handleCopyLocalDevUrl} // Changed to new handler
           className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+          title="Lokal geliştirme sunucusu için URL'yi kopyala"
         >
-          <DownloadCloud className="mr-2 h-4 w-4" />
-          Projeyi İndir
+          <Copy className="mr-2 h-4 w-4" /> {/* Changed icon */}
+          Lokal URL'yi Kopyala {/* Changed text */}
         </Button>
       </div>
     </header>
