@@ -2,7 +2,7 @@
 'use client'; // Make this a client component to use onClick with browser APIs
 
 import React from 'react';
-import { Bot, Copy } from 'lucide-react'; // Changed DownloadCloud to Copy
+import { Bot } from 'lucide-react'; // Removed Copy as it's no longer used
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
@@ -178,27 +178,7 @@ async function downloadClientSideHTMLSnapshot() {
 
 
 export function Header() {
-  const { toast } = useToast();
-
-  const handleCopyLocalDevUrl = async () => {
-    const localUrl = 'http://localhost:9002'; // Port from package.json dev script
-    try {
-      await navigator.clipboard.writeText(localUrl);
-      toast({
-        title: 'Lokal Geliştirme URLsi Kopyalandı!',
-        description: `"${localUrl}" panoya kopyalandı. Tam işlevsellik için projenin geliştirme sunucusunu (örn: 'npm run dev') başlatmanız ve ardından bu URL'yi tarayıcınızda açmanız gerekir. Bu işlem, sunucunun bilgisayarınızda çalışmasını gerektirir.`,
-        duration: 15000, // Longer duration for more complex message
-      });
-    } catch (err) {
-      console.error('Failed to copy local dev URL:', err);
-      toast({
-        title: 'Kopyalama Başarısız',
-        description: 'Lokal geliştirme URLsi panoya kopyalanamadı. Lütfen manuel olarak kopyalayın: ' + localUrl,
-        variant: 'destructive',
-        duration: 10000,
-      });
-    }
-  };
+  // const { toast } = useToast(); // Retained in case downloadClientSideHTMLSnapshot is used later
 
   return (
     <header className="flex items-center justify-between p-4 bg-primary text-primary-foreground shadow-md">
@@ -207,16 +187,7 @@ export function Header() {
         <h1 className="text-xl font-semibold">AI Code Weaver</h1>
       </div>
       <div className="flex items-center gap-2">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={handleCopyLocalDevUrl} // Changed to new handler
-          className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
-          title="Lokal geliştirme sunucusu için URL'yi kopyala"
-        >
-          <Copy className="mr-2 h-4 w-4" /> {/* Changed icon */}
-          Lokal URL'yi Kopyala {/* Changed text */}
-        </Button>
+        {/* The "Lokal URL'yi Kopyala" button and its handler have been removed as per request */}
       </div>
     </header>
   );
