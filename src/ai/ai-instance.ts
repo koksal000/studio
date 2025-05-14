@@ -16,5 +16,5 @@ export const ai = genkit({
       },
     }),
   ],
-  model: 'googleai/gemini-2.0-flash',
+  model: 'googleai/gemini-2.5-pro-preview-05-06', // Updated model
 });
