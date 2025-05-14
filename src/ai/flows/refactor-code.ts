@@ -51,12 +51,17 @@ const refactorCodePrompt = ai.definePrompt({
   output: {
     schema: RefactorCodeOutputSchema, // Use the string schema
   },
-  // The model is now expected to output the raw HTML code directly after the "Refactored Code:" line.
   prompt: `You are an expert code refactoring agent.
 
 You will be given code and a prompt describing how to refactor the code. Apply the requested changes comprehensively throughout the code, ensuring consistency and maintaining functionality unless the prompt specifies otherwise.
 
-**IMPORTANT:** Output *only* the fully refactored code. The output MUST contain the entire, complete, and un-truncated refactored code, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`. Partial output is not acceptable.
+**IMPORTANT INSTRUCTIONS - FOLLOW STRICTLY:**
+1.  **Output Format:** Your response MUST consist of *only* the fully refactored HTML code, and NOTHING ELSE.
+    Your output MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`.
+    **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
+    **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
+    The very first character of your entire response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
+2.  **Completeness:** Ensure the output is the *entire*, complete, and un-truncated refactored code. Partial output is not acceptable.
 
 Original Code:
 \`\`\`html
@@ -66,7 +71,7 @@ Original Code:
 Refactoring Prompt:
 {{{prompt}}}
 
-Refactored Code (Complete HTML, must end with </html>):`, // Model outputs raw HTML here
+Refactored Code (COMPLETE HTML ONLY, starting with <!DOCTYPE html>, ending with </html>, NO OTHER TEXT OR WRAPPERS):`,
   config: {
     safetySettings: permissiveSafetySettings,
   },
@@ -83,7 +88,7 @@ const continueRefactorCodePrompt = ai.definePrompt({
     }),
   },
   output: {
-    schema: z.string().describe('The rest of the refactored HTML code, starting exactly where the partial code left off, and completing the HTML file ending with </html>.'), // Output is raw string
+    schema: z.string().describe('The rest of the refactored HTML code, starting exactly where the partial code left off, and completing the HTML file ending with </html>.'),
   },
   prompt: `You are an expert code refactoring agent continuing the refactoring of a large HTML file. You were given the original code and a refactoring prompt. You started generating the refactored code, but it was incomplete (it did not end with \`</html>\`).
 
@@ -100,9 +105,14 @@ Partially Refactored Code Generated So Far:
 {{{partialRefactoredCode}}}
 \`\`\`
 
-**Your Task:** Continue generating the rest of the refactored HTML code EXACTLY from where the partial code stopped. Do NOT repeat any part of the partial code. Ensure the final combined code (partial code + your continuation) is a single, valid, and complete refactored HTML file ending with \`</html>\`, fully applying the refactoring prompt to the entire original code.
+**Your Task - FOLLOW STRICTLY:**
+1.  **Output Format:** Continue generating the rest of the refactored HTML code EXACTLY from where the partial code stopped. Your response MUST be *only* the continuation of the HTML code.
+    **DO NOT REPEAT ANY PART OF THE PARTIAL CODE.**
+    **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
+    **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
+2.  **Completeness:** Ensure the final combined code (partial code + your continuation) is a single, valid, and complete refactored HTML file ending with \`</html>\`, fully applying the refactoring prompt to the entire original code.
 
-Continuation of Refactored Code (Starts immediately after the end of partial code, completes the HTML file ending with </html>):`, // Model outputs raw HTML continuation here
+Continuation of Refactored Code (HTML ONLY, completes the HTML file ending with </html>, NO OTHER TEXT OR WRAPPERS):`,
   config: {
     safetySettings: permissiveSafetySettings,
   },
@@ -151,12 +161,12 @@ const refactorCodeFlow = ai.defineFlow(
     try {
       // Initial refactor attempt
       let response = await refactorCodePrompt(input);
-      let generatedHtml = cleanupCode(response.output); // Changed from response.output?.refactoredCode
+      let generatedHtml = cleanupCode(response.output);
       fullRefactoredCode = generatedHtml;
 
       while (!isHtmlComplete(fullRefactoredCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
          attempts++;
-         console.log(`Refactored code incomplete (attempt ${attempts}). Requesting continuation...`);
+         console.log(`Refactored code incomplete (attempt ${attempts}). Requesting continuation... Current length: ${fullRefactoredCode.length}, Ends with: "${fullRefactoredCode.slice(-20)}"`);
 
          try {
              const continuationResponse = await continueRefactorCodePrompt({
@@ -164,13 +174,17 @@ const refactorCodeFlow = ai.defineFlow(
                  refactorPrompt: input.prompt,
                  partialRefactoredCode: fullRefactoredCode,
              });
-             const continuationHtml = cleanupCode(continuationResponse.output); // Changed from response.output?.continuation
+             const continuationHtml = cleanupCode(continuationResponse.output); 
 
              if (continuationHtml) {
                  fullRefactoredCode += '\n' + continuationHtml;
                  console.log(`Appended refactor continuation (length: ${continuationHtml.length}). Total length: ${fullRefactoredCode.length}`);
              } else {
                   console.warn(`Refactor continuation attempt ${attempts} returned empty code.`);
+                  if (fullRefactoredCode.length < 100 && !fullRefactoredCode.toLowerCase().includes("<html")) {
+                    console.error("Initial refactor and continuation are non-HTML or too short. Aborting.");
+                    return `<!-- Error: AI model did not produce valid refactored HTML after ${attempts} attempts. Output was: ${fullRefactoredCode.substring(0,200)} -->\n${input.code}`;
+                  }
                   break;
              }
          } catch (continuationError) {
@@ -181,15 +195,28 @@ const refactorCodeFlow = ai.defineFlow(
 
       if (!isHtmlComplete(fullRefactoredCode)) {
           console.warn(`Refactored code might still be incomplete after ${attempts} continuation attempts.`);
+          if (fullRefactoredCode.length < 200 && !fullRefactoredCode.toLowerCase().includes("<html") && !fullRefactoredCode.startsWith("<!DOCTYPE html>")) {
+            return `<!-- Error: AI model did not produce valid refactored HTML content. Received: ${fullRefactoredCode.substring(0,500)} -->\n${input.code}`;
+          }
           return `${fullRefactoredCode}\n<!-- Warning: Refactored code might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->`;
       } else {
           console.log("Refactored code generation appears complete.");
       }
 
+      if (fullRefactoredCode.trim().length < 200 && !fullRefactoredCode.toLowerCase().includes("<html")) {
+        console.warn("Refactored code is suspiciously short and might not be valid HTML:", fullRefactoredCode.substring(0,100));
+        return `<!-- Error: Refactored code is too short or not valid HTML. Output: ${fullRefactoredCode.substring(0,500)} -->\n${input.code}`;
+      }
+
       return fullRefactoredCode;
     } catch (initialError) {
       console.error("Error during initial code refactoring:", initialError);
-      return `<!-- Error during initial code refactoring: ${initialError instanceof Error ? initialError.message : String(initialError)} -->\n${input.code}`;
+      const message = initialError instanceof Error ? initialError.message : String(initialError);
+      if (message.includes("Candidate was blocked due to")) {
+        return `<!-- Error: Content refactoring blocked by safety settings. Please revise your prompt or contact support. Details: ${message} -->\n${input.code}`;
+      }
+      return `<!-- Error during initial code refactoring: ${message} -->\n${input.code}`;
     }
   }
 );
+
