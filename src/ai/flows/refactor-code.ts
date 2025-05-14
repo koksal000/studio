@@ -23,6 +23,13 @@ export type RefactorCodeInput = z.infer<typeof RefactorCodeInputSchema>;
 const RefactorCodeOutputSchema = z.string().describe('The comprehensively refactored code. Must be a complete HTML document ending with </html>.');
 export type RefactorCodeOutput = z.infer<typeof RefactorCodeOutputSchema>; // This will be `string`
 
+const permissiveSafetySettings = [
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+];
+
 export async function refactorCode(input: RefactorCodeInput): Promise<RefactorCodeOutput> {
   try {
     return await refactorCodeFlow(input);
@@ -60,6 +67,9 @@ Refactoring Prompt:
 {{{prompt}}}
 
 Refactored Code (Complete HTML, must end with </html>):`, // Model outputs raw HTML here
+  config: {
+    safetySettings: permissiveSafetySettings,
+  },
 });
 
 // Define the continuation prompt for refactoring
@@ -93,6 +103,9 @@ Partially Refactored Code Generated So Far:
 **Your Task:** Continue generating the rest of the refactored HTML code EXACTLY from where the partial code stopped. Do NOT repeat any part of the partial code. Ensure the final combined code (partial code + your continuation) is a single, valid, and complete refactored HTML file ending with \`</html>\`, fully applying the refactoring prompt to the entire original code.
 
 Continuation of Refactored Code (Starts immediately after the end of partial code, completes the HTML file ending with </html>):`, // Model outputs raw HTML continuation here
+  config: {
+    safetySettings: permissiveSafetySettings,
+  },
 });
 
 

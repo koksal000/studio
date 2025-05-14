@@ -126,6 +126,13 @@ export type GenerateCodeInput = z.infer<typeof GenerateCodeInputSchema>;
 const GenerateCodeOutputSchema = z.string().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>.');
 export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>; // This will be `string`
 
+const permissiveSafetySettings = [
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+];
+
 export async function generateCode(input: GenerateCodeInput): Promise<GenerateCodeOutput> {
   try {
     return await generateCodeFlow(input);
@@ -172,6 +179,9 @@ User Prompt:
 {{{prompt}}}
 
 Generated Code (Single HTML File, Thousands of lines, Advanced UI/UX, Complete and Un-truncated, must end with </html>):`, // Model outputs raw HTML here
+  config: {
+    safetySettings: permissiveSafetySettings,
+  },
 });
 
 // Define the continuation prompt
@@ -199,6 +209,9 @@ Partial Code Generated So Far:
 **Your Task:** Continue generating the rest of the HTML code EXACTLY from where the partial code stopped. Do NOT repeat any part of the partial code. Ensure the final combined code (partial code + your continuation) is a single, valid, and complete HTML file ending with \`</html>\`. Adhere to all the rules and advanced UI/UX requirements from the original generation task.
 
 Continuation Code (Starts immediately after the end of partial code, completes the HTML file ending with </html>):`, // Model outputs raw HTML continuation here
+  config: {
+    safetySettings: permissiveSafetySettings,
+  },
 });
 
 
