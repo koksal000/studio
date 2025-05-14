@@ -5,7 +5,7 @@
  *
  * - refactorCode - A function that handles the code refactoring process.
  * - RefactorCodeInput - The input type for the refactorCode function.
- * - RefactorCodeOutput - The return type for the refactorCode function.
+ * - RefactorCodeOutput - The return type for the refactorCode function (now a string).
  */
 
 import {ai} from '@/ai/ai-instance';
@@ -19,18 +19,16 @@ const RefactorCodeInputSchema = z.object({
 });
 export type RefactorCodeInput = z.infer<typeof RefactorCodeInputSchema>;
 
-const RefactorCodeOutputSchema = z.object({
-  refactoredCode: z.string().describe('The comprehensively refactored code.'),
-});
-export type RefactorCodeOutput = z.infer<typeof RefactorCodeOutputSchema>;
+// Output is now a direct string for the refactored HTML code
+const RefactorCodeOutputSchema = z.string().describe('The comprehensively refactored code. Must be a complete HTML document ending with </html>.');
+export type RefactorCodeOutput = z.infer<typeof RefactorCodeOutputSchema>; // This will be `string`
 
 export async function refactorCode(input: RefactorCodeInput): Promise<RefactorCodeOutput> {
   try {
     return await refactorCodeFlow(input);
   } catch (error) {
     console.error("Critical error in refactorCode flow:", error);
-    // Ensure a valid output is returned even in case of unexpected errors
-    return { refactoredCode: `<!-- Error refactoring code: ${error instanceof Error ? error.message : String(error)} -->\n${input.code}` };
+    return `<!-- Error refactoring code: ${error instanceof Error ? error.message : String(error)} -->\n${input.code}`;
   }
 }
 
@@ -44,10 +42,9 @@ const refactorCodePrompt = ai.definePrompt({
     }),
   },
   output: {
-    schema: z.object({
-      refactoredCode: z.string().describe('The comprehensively refactored code, must be a complete HTML document ending with </html>.'),
-    }),
+    schema: RefactorCodeOutputSchema, // Use the string schema
   },
+  // The model is now expected to output the raw HTML code directly after the "Refactored Code:" line.
   prompt: `You are an expert code refactoring agent.
 
 You will be given code and a prompt describing how to refactor the code. Apply the requested changes comprehensively throughout the code, ensuring consistency and maintaining functionality unless the prompt specifies otherwise.
@@ -62,10 +59,7 @@ Original Code:
 Refactoring Prompt:
 {{{prompt}}}
 
-Refactored Code (Complete HTML, must end with </html>):
-\`\`\`html
-{{refactoredCode}}
-\`\`\``,
+Refactored Code (Complete HTML, must end with </html>):`, // Model outputs raw HTML here
 });
 
 // Define the continuation prompt for refactoring
@@ -79,9 +73,7 @@ const continueRefactorCodePrompt = ai.definePrompt({
     }),
   },
   output: {
-    schema: z.object({
-      continuation: z.string().describe('The rest of the refactored HTML code, starting exactly where the partial code left off.'),
-    }),
+    schema: z.string().describe('The rest of the refactored HTML code, starting exactly where the partial code left off, and completing the HTML file ending with </html>.'), // Output is raw string
   },
   prompt: `You are an expert code refactoring agent continuing the refactoring of a large HTML file. You were given the original code and a refactoring prompt. You started generating the refactored code, but it was incomplete (it did not end with \`</html>\`).
 
@@ -100,17 +92,13 @@ Partially Refactored Code Generated So Far:
 
 **Your Task:** Continue generating the rest of the refactored HTML code EXACTLY from where the partial code stopped. Do NOT repeat any part of the partial code. Ensure the final combined code (partial code + your continuation) is a single, valid, and complete refactored HTML file ending with \`</html>\`, fully applying the refactoring prompt to the entire original code.
 
-Continuation of Refactored Code (Starts immediately after the end of partial code, completes the HTML file ending with </html>):
-\`\`\`html
-{{continuation}}
-\`\`\``,
+Continuation of Refactored Code (Starts immediately after the end of partial code, completes the HTML file ending with </html>):`, // Model outputs raw HTML continuation here
 });
 
 
 // Helper function to check if HTML seems complete
 function isHtmlComplete(code: string): boolean {
     const trimmedCode = code.trim();
-    // Simple check: does it end with </html>? More robust checks could be added.
     return trimmedCode.endsWith('</html>');
 }
 
@@ -119,20 +107,20 @@ function cleanupCode(code: string | undefined | null): string {
     if (code === undefined || code === null) {
         return '';
     }
-    let cleaned = String(code).trim(); // Ensure it's a string before trimming
-    // Handle potential markdown code blocks
+    let cleaned = String(code).trim();
     if (cleaned.startsWith('```html')) {
-      cleaned = cleaned.substring(7).trimStart();
+      cleaned = cleaned.substring(7);
       if (cleaned.endsWith('```')) {
-        cleaned = cleaned.substring(0, cleaned.length - 3).trimEnd();
+        cleaned = cleaned.substring(0, cleaned.length - 3);
       }
-    } else if (cleaned.startsWith('```')) { // More generic ``` removal if 'html' isn't there
-      cleaned = cleaned.substring(3).trimStart();
+      cleaned = cleaned.trimStart();
+    } else if (cleaned.startsWith('```')) {
+      cleaned = cleaned.substring(3);
       if (cleaned.endsWith('```')) {
-        cleaned = cleaned.substring(0, cleaned.length - 3).trimEnd();
+        cleaned = cleaned.substring(0, cleaned.length - 3);
       }
+      cleaned = cleaned.trimStart();
     }
-     // Ensure final trim
     return cleaned.trim();
 }
 
@@ -141,19 +129,18 @@ const refactorCodeFlow = ai.defineFlow(
   {
     name: 'refactorCodeFlow',
     inputSchema: RefactorCodeInputSchema,
-    outputSchema: RefactorCodeOutputSchema,
+    outputSchema: RefactorCodeOutputSchema, // Output is now z.string()
   },
-  async (input): Promise<RefactorCodeOutput> => { // Explicitly type the return promise
+  async (input): Promise<string> => { // Return type is string
     let fullRefactoredCode = '';
     let attempts = 0;
 
     try {
       // Initial refactor attempt
       let response = await refactorCodePrompt(input);
-      let generatedHtml = cleanupCode(response.output?.refactoredCode);
+      let generatedHtml = cleanupCode(response.output); // Changed from response.output?.refactoredCode
       fullRefactoredCode = generatedHtml;
 
-      // Check for completion and attempt continuation if needed
       while (!isHtmlComplete(fullRefactoredCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
          attempts++;
          console.log(`Refactored code incomplete (attempt ${attempts}). Requesting continuation...`);
@@ -162,37 +149,34 @@ const refactorCodeFlow = ai.defineFlow(
              const continuationResponse = await continueRefactorCodePrompt({
                  originalCode: input.code,
                  refactorPrompt: input.prompt,
-                 partialRefactoredCode: fullRefactoredCode, // Pass the code generated so far
+                 partialRefactoredCode: fullRefactoredCode,
              });
-             const continuationHtml = cleanupCode(continuationResponse.output?.continuation);
+             const continuationHtml = cleanupCode(continuationResponse.output); // Changed from response.output?.continuation
 
              if (continuationHtml) {
-                 fullRefactoredCode += '\n' + continuationHtml; // Append the continuation with a newline
+                 fullRefactoredCode += '\n' + continuationHtml;
                  console.log(`Appended refactor continuation (length: ${continuationHtml.length}). Total length: ${fullRefactoredCode.length}`);
              } else {
                   console.warn(`Refactor continuation attempt ${attempts} returned empty code.`);
-                  break; // Avoid infinite loop
+                  break;
              }
          } catch (continuationError) {
              console.error(`Error during refactor continuation attempt ${attempts}:`, continuationError);
-             // Return partial code with error comment
-             return { refactoredCode: `${fullRefactoredCode}\n<!-- Error during refactor continuation: ${continuationError instanceof Error ? continuationError.message : String(continuationError)} -->` };
+             return `${fullRefactoredCode}\n<!-- Error during refactor continuation: ${continuationError instanceof Error ? continuationError.message : String(continuationError)} -->`;
          }
       }
 
       if (!isHtmlComplete(fullRefactoredCode)) {
           console.warn(`Refactored code might still be incomplete after ${attempts} continuation attempts.`);
-          // Return partial code with warning
-          return { refactoredCode: `${fullRefactoredCode}\n<!-- Warning: Refactored code might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->` };
+          return `${fullRefactoredCode}\n<!-- Warning: Refactored code might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->`;
       } else {
           console.log("Refactored code generation appears complete.");
       }
 
-      return { refactoredCode: fullRefactoredCode };
+      return fullRefactoredCode;
     } catch (initialError) {
       console.error("Error during initial code refactoring:", initialError);
-      // Return an error comment along with the original code to satisfy schema
-      return { refactoredCode: `<!-- Error during initial code refactoring: ${initialError instanceof Error ? initialError.message : String(initialError)} -->\n${input.code}` };
+      return `<!-- Error during initial code refactoring: ${initialError instanceof Error ? initialError.message : String(initialError)} -->\n${input.code}`;
     }
   }
 );

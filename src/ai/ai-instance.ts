@@ -13,6 +13,7 @@ export const ai = genkit({
       // Gemini 2.0 Flash experimental might have different limits. Let's use 8192 as a target.
       defaultGenerationOptions: {
         maxOutputTokens: 8192,
+        topP: 1, // Added topP based on cURL example
       },
     }),
   ],

@@ -5,7 +5,7 @@
  *
  * - generateCode - A function that handles the code generation process.
  * - GenerateCodeInput - The input type for the generateCode function.
- * - GenerateCodeOutput - The return type for the generateCode function.
+ * - GenerateCodeOutput - The return type for the generateCode function (now a string).
  */
 
 import {ai} from '@/ai/ai-instance';
@@ -122,19 +122,16 @@ const GenerateCodeInputSchema = z.object({
 });
 export type GenerateCodeInput = z.infer<typeof GenerateCodeInputSchema>;
 
-const GenerateCodeOutputSchema = z.object({
-  // Expecting a single string containing the full HTML code
-  code: z.string().describe('The generated HTML code, containing all HTML, CSS, and JS.'),
-});
-export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>;
+// Output is now a direct string for the HTML code
+const GenerateCodeOutputSchema = z.string().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>.');
+export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>; // This will be `string`
 
 export async function generateCode(input: GenerateCodeInput): Promise<GenerateCodeOutput> {
   try {
     return await generateCodeFlow(input);
   } catch (error) {
     console.error("Critical error in generateCode flow:", error);
-    // Ensure a valid output is returned even in case of unexpected errors
-    return { code: `<!-- Error generating code: ${error instanceof Error ? error.message : String(error)} -->` };
+    return `<!-- Error generating code: ${error instanceof Error ? error.message : String(error)} -->`;
   }
 }
 
@@ -147,11 +144,10 @@ const generateCodePrompt = ai.definePrompt({
     }),
   },
   output: {
-    schema: z.object({
-      code: z.string().describe('The generated HTML code, containing all HTML, CSS, and JS.'),
-    }),
+    schema: GenerateCodeOutputSchema, // Use the string schema
   },
   // Updated prompt including the 100 rules and instructions for single HTML file output
+  // The model is now expected to output the raw HTML code directly after the "Generated Code:" line.
   prompt: `You are an expert web developer tasked with generating comprehensive, visually stunning, and feature-rich web applications based on user prompts.
 Follow these instructions STRICTLY:
 
@@ -175,10 +171,7 @@ Follow these instructions STRICTLY:
 User Prompt:
 {{{prompt}}}
 
-Generated Code (Single HTML File, Thousands of lines, Advanced UI/UX, Complete and Un-truncated, must end with </html>):
-\`\`\`html
-{{code}}
-\`\`\``, // Expect the output directly within the html block
+Generated Code (Single HTML File, Thousands of lines, Advanced UI/UX, Complete and Un-truncated, must end with </html>):`, // Model outputs raw HTML here
 });
 
 // Define the continuation prompt
@@ -191,9 +184,7 @@ const continueCodePrompt = ai.definePrompt({
     }),
   },
   output: {
-    schema: z.object({
-      continuation: z.string().describe('The rest of the HTML code, starting exactly where the partial code left off.'),
-    }),
+    schema: z.string().describe('The rest of the HTML code, starting exactly where the partial code left off, and completing the HTML file ending with </html>.'), // Output is raw string
   },
   prompt: `You are an expert web developer continuing the generation of a large HTML file. You previously generated the following partial code based on the original user prompt, but it was incomplete (it did not end with \`</html>\`).
 
@@ -207,17 +198,13 @@ Partial Code Generated So Far:
 
 **Your Task:** Continue generating the rest of the HTML code EXACTLY from where the partial code stopped. Do NOT repeat any part of the partial code. Ensure the final combined code (partial code + your continuation) is a single, valid, and complete HTML file ending with \`</html>\`. Adhere to all the rules and advanced UI/UX requirements from the original generation task.
 
-Continuation Code (Starts immediately after the end of partial code, completes the HTML file ending with </html>):
-\`\`\`html
-{{continuation}}
-\`\`\``,
+Continuation Code (Starts immediately after the end of partial code, completes the HTML file ending with </html>):`, // Model outputs raw HTML continuation here
 });
 
 
 // Helper function to check if HTML seems complete
 function isHtmlComplete(code: string): boolean {
     const trimmedCode = code.trim();
-    // Simple check: does it end with </html>? More robust checks could be added.
     return trimmedCode.endsWith('</html>');
 }
 
@@ -226,20 +213,22 @@ function cleanupCode(code: string | undefined | null): string {
     if (code === undefined || code === null) {
         return '';
     }
-    let cleaned = String(code).trim(); // Ensure it's a string before trimming
+    let cleaned = String(code).trim();
+    // Remove markdown ```html ... ``` wrapper if present
     if (cleaned.startsWith('```html')) {
-      cleaned = cleaned.substring(7).trimStart();
+      cleaned = cleaned.substring(7);
+      if (cleaned.endsWith('```')) {
+        cleaned = cleaned.substring(0, cleaned.length - 3);
+      }
+      cleaned = cleaned.trimStart(); // remove leading newline after ```html
+    } else if (cleaned.startsWith('```')) { // More generic ``` removal
+      cleaned = cleaned.substring(3);
+      if (cleaned.endsWith('```')) {
+        cleaned = cleaned.substring(0, cleaned.length - 3);
+      }
+      cleaned = cleaned.trimStart();
     }
-    if (cleaned.endsWith('```')) {
-      cleaned = cleaned.substring(0, cleaned.length - 3).trimEnd();
-    }
-    // Handle cases where ``` might be missing but html```` is present
-    if (cleaned.startsWith('html```')) {
-      cleaned = cleaned.substring(7).trimStart();
-    } else if (cleaned.startsWith('```')) { // Generic ``` removal
-      cleaned = cleaned.substring(3).trimStart();
-    }
-    return cleaned;
+    return cleaned.trim();
 }
 
 
@@ -247,19 +236,18 @@ const generateCodeFlow = ai.defineFlow(
   {
     name: 'generateCodeFlow',
     inputSchema: GenerateCodeInputSchema,
-    outputSchema: GenerateCodeOutputSchema,
+    outputSchema: GenerateCodeOutputSchema, // Output is now z.string()
   },
-  async (input): Promise<GenerateCodeOutput> => { // Explicitly type the return promise
+  async (input): Promise<string> => { // Return type is string
      let fullCode = '';
      let attempts = 0;
 
      try {
        // Initial generation attempt
        let response = await generateCodePrompt(input);
-       let generatedHtml = cleanupCode(response.output?.code);
+       let generatedHtml = cleanupCode(response.output); // Changed from response.output?.code
        fullCode = generatedHtml;
 
-       // Check for completion and attempt continuation if needed
        while (!isHtmlComplete(fullCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
           attempts++;
           console.log(`Code generation incomplete (attempt ${attempts}). Requesting continuation...`);
@@ -267,39 +255,34 @@ const generateCodeFlow = ai.defineFlow(
           try {
               const continuationResponse = await continueCodePrompt({
                   originalPrompt: input.prompt,
-                  partialCode: fullCode, // Pass the code generated so far
+                  partialCode: fullCode,
               });
-              const continuationHtml = cleanupCode(continuationResponse.output?.continuation);
+              const continuationHtml = cleanupCode(continuationResponse.output); // Changed from response.output?.continuation
 
               if (continuationHtml) {
-                  fullCode += continuationHtml; // Append the continuation
+                  fullCode += '\n' + continuationHtml; // Append the continuation, ensure newline if model doesn't provide it
                   console.log(`Appended continuation (length: ${continuationHtml.length}). Total length: ${fullCode.length}`);
               } else {
                    console.warn(`Continuation attempt ${attempts} returned empty code.`);
-                   // Avoid infinite loop if continuation keeps returning empty
                    break;
               }
           } catch (continuationError) {
               console.error(`Error during continuation attempt ${attempts}:`, continuationError);
-               // Decide if you want to break or retry here. Breaking for now.
-               // Return the partial code with an error comment to ensure schema is met
-               return { code: `${fullCode}\n<!-- Error during continuation: ${continuationError instanceof Error ? continuationError.message : String(continuationError)} -->` };
+               return `${fullCode}\n<!-- Error during continuation: ${continuationError instanceof Error ? continuationError.message : String(continuationError)} -->`;
           }
        }
 
        if (!isHtmlComplete(fullCode)) {
           console.warn(`Code might still be incomplete after ${attempts} continuation attempts.`);
-          // Return the partial code with a warning comment
-          return { code: `${fullCode}\n<!-- Warning: Code generation might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->` };
+          return `${fullCode}\n<!-- Warning: Code generation might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->`;
        } else {
            console.log("Code generation appears complete.");
        }
 
-       return { code: fullCode };
+       return fullCode;
      } catch (initialError) {
         console.error("Error during initial code generation:", initialError);
-        // Return an error comment within the code structure
-        return { code: `<!-- Error during initial code generation: ${initialError instanceof Error ? initialError.message : String(initialError)} -->` };
+        return `<!-- Error during initial code generation: ${initialError instanceof Error ? initialError.message : String(initialError)} -->`;
      }
    }
 );
