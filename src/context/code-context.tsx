@@ -1,10 +1,11 @@
+
 'use client';
 
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
 import { generateCode } from '@/ai/flows/generate-code-from-prompt';
-import type { GenerateCodeOutput } from '@/ai/flows/generate-code-from-prompt'; // Will be string
+import type { GenerateCodeOutput } from '@/ai/flows/generate-code-from-prompt'; // Will be string | null
 import { refactorCode } from '@/ai/flows/refactor-code';
-import type { RefactorCodeOutput } from '@/ai/flows/refactor-code'; // Will be string
+import type { RefactorCodeOutput } from '@/ai/flows/refactor-code'; // Will be string | null
 
 export interface GeneratedFile {
   fileName: string;
@@ -14,7 +15,7 @@ export interface GeneratedFile {
 interface CodeContextType {
   prompt: string;
   setPrompt: (prompt: string) => void;
-  generatedCode: string;
+  generatedCode: string | null; // Can be null
   generatedFiles: GeneratedFile[];
   isLoading: boolean;
   error: string | null;
@@ -27,7 +28,7 @@ interface CodeContextType {
   setIsRefactorModalOpen: (isOpen: boolean) => void;
   refactorPrompt: string;
   setRefactorPrompt: (prompt: string) => void;
-  refactoredCode: string | null; // Stores the proposed refactored code (string)
+  refactoredCode: string | null;
   isRefactoring: boolean;
   refactorError: string | null;
   handleRefactorCode: () => Promise<void>;
@@ -40,7 +41,7 @@ const CodeContext = createContext<CodeContextType | undefined>(undefined);
 
 export const CodeProvider = ({ children }: { children: ReactNode }) => {
   const [prompt, setPrompt] = useState<string>('');
-  const [generatedCode, setGeneratedCode] = useState<string>('');
+  const [generatedCode, setGeneratedCode] = useState<string | null>(null); // Initialize to null
   const [previousGeneratedCode, setPreviousGeneratedCode] = useState<string | null>(null);
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -49,7 +50,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
   const [isRefactorModalOpen, setIsRefactorModalOpen] = useState<boolean>(false);
   const [refactorPrompt, setRefactorPrompt] = useState<string>('');
-  const [refactoredCode, setRefactoredCode] = useState<string | null>(null); // Now stores string
+  const [refactoredCode, setRefactoredCode] = useState<string | null>(null);
   const [isRefactoring, setIsRefactoring] = useState<boolean>(false);
   const [refactorError, setRefactorError] = useState<string | null>(null);
 
@@ -61,25 +62,15 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [previewUrl]);
 
-  useEffect(() => {
-     updatePreviewInternal(parseGeneratedCode(generatedCode));
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [generatedCode]);
-
-
-  const parseGeneratedCode = (code: string): GeneratedFile[] => {
-    if (!code || typeof code !== 'string' || code.trim() === '') {
-      return [];
-    }
-    return [{ fileName: 'index.html', content: code.trim() }];
-  };
-
-  const updatePreviewInternal = useCallback((files: GeneratedFile[]) => {
+  // Renamed to avoid conflict and make clear it's internal
+  const updatePreviewFromCode = useCallback((currentCode: string | null) => {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null); // Clear previous URL
     }
 
-    if (files.length === 0 || !files[0].content || typeof files[0].content !== 'string') {
+    const files = parseGeneratedCode(currentCode);
+    if (files.length === 0 || !files[0].content) {
       setPreviewUrl(null);
       return;
     }
@@ -94,9 +85,19 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setPreviewUrl(null);
       setError("Could not create preview from the generated content.");
     }
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewUrl]);
+  }, [previewUrl]); // Removed setPreviewUrl from dependencies as it causes loops
 
+  useEffect(() => {
+     updatePreviewFromCode(generatedCode);
+  }, [generatedCode, updatePreviewFromCode]);
+
+
+  const parseGeneratedCode = (code: string | null): GeneratedFile[] => {
+    if (!code || typeof code !== 'string' || code.trim() === '') {
+      return [];
+    }
+    return [{ fileName: 'index.html', content: code.trim() }];
+  };
 
   const handleGenerateCode = async () => {
     if (!prompt) {
@@ -105,7 +106,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     }
     setIsLoading(true);
     setError(null);
-    setGeneratedCode('');
+    setGeneratedCode(null); // Set to null initially
     setPreviousGeneratedCode(null);
     setGeneratedFiles([]);
     if (previewUrl) {
@@ -114,23 +115,27 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      const resultCode: GenerateCodeOutput = await generateCode({ prompt }); // generateCode now returns Promise<string>
-      if (typeof resultCode === 'string') {
+      const resultCode: GenerateCodeOutput = await generateCode({ prompt }); // generateCode now returns Promise<string | null>
+      
+      if (resultCode !== null) {
         setGeneratedCode(resultCode);
         setGeneratedFiles(parseGeneratedCode(resultCode));
+        if (resultCode.trim() === '' || resultCode.startsWith('<!-- Error:') || resultCode.startsWith('<!-- Warning:')) {
+             // If AI returned an empty string or a known error/warning comment, show it in the error display
+             setError(resultCode.trim() === '' ? 'AI returned empty content.' : resultCode);
+        }
       } else {
-        // This case should ideally not be reached if generateCode adheres to its return type
-        console.error('Error generating code: AI returned non-string output despite schema.', resultCode);
-        setError('Failed to generate code: AI returned an unexpected format.');
-        const errorHtml = '<!-- AI returned unexpected non-string output -->';
-        setGeneratedCode(errorHtml);
-        setGeneratedFiles(parseGeneratedCode(errorHtml));
+        // Model explicitly returned null from the flow
+        const nullErrorMsg = 'AI failed to generate content (returned null). Please try again or check the model.';
+        setError(nullErrorMsg);
+        setGeneratedCode('<!-- Error: AI returned null -->');
+        setGeneratedFiles(parseGeneratedCode('<!-- Error: AI returned null -->'));
       }
-    } catch (err) {
-      console.error('Error generating code:', err);
-      const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'Please try again.'}`;
+    } catch (err) { // This catch is for unexpected errors in the generateCode call itself or context logic
+      console.error('Error in handleGenerateCode:', err);
+      const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
       setError(errorMessage);
-      const errorHtml = `<!-- Error: ${errorMessage} -->`;
+      const errorHtml = `<!-- Context Error: ${errorMessage} -->`;
       setGeneratedCode(errorHtml);
       setPreviousGeneratedCode(null);
       setGeneratedFiles(parseGeneratedCode(errorHtml));
@@ -144,7 +149,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setRefactorError('Please enter refactoring instructions.');
       return;
     }
-    if (!generatedCode) {
+    if (!generatedCode) { // Check if generatedCode is null or empty
       setRefactorError('No code available to refactor.');
       return;
     }
@@ -154,48 +159,54 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setRefactoredCode(null);
 
     try {
-      const resultRefactoredCode: RefactorCodeOutput = await refactorCode({ code: generatedCode, prompt: refactorPrompt }); // refactorCode now returns Promise<string>
-      if (typeof resultRefactoredCode === 'string') {
+      const resultRefactoredCode: RefactorCodeOutput = await refactorCode({ code: generatedCode, prompt: refactorPrompt });
+      
+      if (resultRefactoredCode !== null) {
         setRefactoredCode(resultRefactoredCode);
+         if (resultRefactoredCode.trim() === '' || resultRefactoredCode.startsWith('<!-- Error:') || resultRefactoredCode.startsWith('<!-- Warning:')) {
+            setRefactorError(resultRefactoredCode.trim() === '' ? 'AI returned empty refactored code.' : resultRefactoredCode);
+        }
       } else {
-        // This case should ideally not be reached
-        console.error('Error refactoring code: AI returned non-string refactored code.', resultRefactoredCode);
-        setRefactorError('Failed to refactor code: AI returned an unexpected format.');
-        setRefactoredCode(`<!-- AI returned non-string refactored code -->\n${generatedCode}`);
+        const nullErrorMsg = 'AI failed to refactor code (returned null). Please try again or check the model.';
+        setRefactorError(nullErrorMsg);
+        setRefactoredCode(`<!-- Error: AI returned null during refactor. -->\n${generatedCode}`);
       }
     } catch (err) {
-      console.error('Error refactoring code:', err);
-      const errorMessage = `Failed to refactor code. ${err instanceof Error ? err.message : 'Please try again.'}`;
+      console.error('Error in handleRefactorCode:', err);
+      const errorMessage = `Failed to refactor code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
       setRefactorError(errorMessage);
-      setRefactoredCode(`<!-- Error: ${errorMessage} -->\n${generatedCode}`);
+      setRefactoredCode(`<!-- Context Error during refactor: ${errorMessage} -->\n${generatedCode}`);
     } finally {
       setIsRefactoring(false);
     }
   };
 
   const applyRefactor = () => {
-    if (refactoredCode !== null && typeof refactoredCode === 'string') {
+    if (refactoredCode !== null && typeof refactoredCode === 'string' && !refactoredCode.startsWith('<!-- Error:')) {
       setPreviousGeneratedCode(generatedCode);
       setGeneratedCode(refactoredCode);
-      setGeneratedFiles(parseGeneratedCode(refactoredCode));
+      // generatedFiles will be updated by the useEffect on generatedCode
       setRefactoredCode(null);
       setRefactorPrompt('');
       setIsRefactorModalOpen(false);
+      setError(null); // Clear general error if refactor is successful
+      setRefactorError(null); // Clear refactor specific error
     } else {
-      setRefactorError("Cannot apply changes: No valid refactored code available.");
+      setRefactorError(refactoredCode === null ? "Cannot apply changes: No refactored code available." : "Cannot apply changes: Refactored code contains errors or is empty.");
     }
   };
 
   const undoRefactor = () => {
     if (previousGeneratedCode !== null) {
       setGeneratedCode(previousGeneratedCode);
-      setGeneratedFiles(parseGeneratedCode(previousGeneratedCode));
+      // generatedFiles will be updated by the useEffect on generatedCode
       setPreviousGeneratedCode(null);
+      setError(null); // Clear general error
     }
   };
 
   const downloadCode = async () => {
-    if (!generatedCode || typeof generatedCode !== 'string') {
+    if (!generatedCode || typeof generatedCode !== 'string' || generatedCode.trim() === '') {
       setError('No valid code generated to download.');
       return;
     }
@@ -215,8 +226,8 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePreview = useCallback(() => {
-     updatePreviewInternal(generatedFiles);
-   }, [generatedFiles, updatePreviewInternal]);
+     updatePreviewFromCode(generatedCode);
+   }, [generatedCode, updatePreviewFromCode]);
 
   return (
     <CodeContext.Provider
