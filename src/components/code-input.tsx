@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useCodeContext } from '@/context/code-context';
-import { Loader2, AlertCircle } from 'lucide-react'; // Removed Activity
+import { Loader2, AlertCircle } from 'lucide-react'; 
 import { ScrollArea } from './ui/scroll-area';
 
 export function CodeInput() {
@@ -16,7 +16,6 @@ export function CodeInput() {
     handleGenerateCode,
     isLoading,
     error,
-    // Removed Test API related context values
   } = useCodeContext();
 
   const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -70,8 +69,6 @@ export function CodeInput() {
           'Generate Code'
         )}
       </Button>
-
-      {/* Removed Test API Button and Display Area */}
     </div>
   );
 }

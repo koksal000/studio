@@ -87,9 +87,9 @@ const refactorCodeFlow = ai.defineFlow(
     outputSchema: RefactorCodeOutputSchema, // Expects { code: string }
   },
   async (input): Promise<RefactorCodeOutput> => {
-    console.log("[refactorCodeFlow] Attempting code refactor with JSON output. User prompt:", input.prompt);
+    console.log("[refactorCodeFlow] Attempting code refactor. User prompt:", input.prompt);
     try {
-      const { output } = await refactorCodePrompt(input); // output is RefactorCodeOutputSchema
+      const { output } = await refactorCodePrompt(input); 
 
       if (!output || typeof output.code !== 'string') {
         console.error("[refactorCodeFlow] CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_STRUCTURE_FOR_REFACTORED_CODE_PROPERTY. Output was:", output);
@@ -101,21 +101,16 @@ const refactorCodeFlow = ai.defineFlow(
          return { code: `<!-- WARNING: AI_MODEL_RETURNED_EMPTY_STRING_FOR_REFACTOR. Original code preserved below. -->\n${input.code}` };
       }
 
-      // If AI itself returns an error comment within the JSON, pass it through but log it.
       if (output.code.startsWith("<!-- Error:") || output.code.startsWith("<!-- CRITICAL_ERROR:") || output.code.startsWith("<!-- WARNING:")) {
          console.warn("[refactorCodeFlow] Refactor resulted in an AI-generated error/warning comment in JSON:", output.code);
-         // If it's a critical error from AI, ensure original code is not lost if not already included by AI
-         if (output.code.startsWith("<!-- CRITICAL_ERROR:")) {
-            return { code: `${output.code}\n<!-- Original code for context (if not included by AI): -->\n${input.code}` };
-         }
-         return output; // Pass through AI's own error/warning comment
+         return output; 
       }
       
       console.log(`[refactorCodeFlow] Received refactored code from AI (length): ${output.code.length}`);
       return output;
 
     } catch (error: any) {
-      let errorMessage = "Unknown error occurred during refactor code flow's main try-catch.";
+      let errorMessage = "Unknown error occurred during refactor code flow.";
       if (error instanceof Error) {
         errorMessage = error.message;
         if (error.stack) {
@@ -128,14 +123,8 @@ const refactorCodeFlow = ai.defineFlow(
           errorMessage = JSON.stringify(error);
         } catch (e) { /* ignore stringify error */ }
       }
-      console.error("[refactorCodeFlow] Critical error in flow's main try-catch:", errorMessage);
-      // Preserve original code in case of flow error
-      if (errorMessage.includes("Candidate was blocked due to")) {
-         return { code: `<!-- Error: Content refactoring blocked by safety settings. Details: ${errorMessage.replace(/-->/g, '--&gt;')} -->\n${input.code}` };
-      }
-      return { code: `<!-- ERROR_DURING_REFACTOR_CODE_FLOW_MAIN_CATCH: ${errorMessage.replace(/-->/g, '--&gt;')} -->\n${input.code}` };
+      console.error("[refactorCodeFlow] Critical error in flow:", errorMessage);
+      return { code: `<!-- ERROR_DURING_REFACTOR_CODE_FLOW: ${errorMessage.replace(/-->/g, '--&gt;')} -->\n${input.code}` };
     }
   }
 );
-
-    

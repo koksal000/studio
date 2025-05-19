@@ -28,11 +28,11 @@ interface CodeContextType {
   setIsRefactorModalOpen: (isOpen: boolean) => void;
   refactorPrompt: string;
   setRefactorPrompt: (prompt: string) => void;
-  refactoredCode: string | null;
+  refactoredCode: string | null; 
   isRefactoring: boolean;
   refactorError: string | null;
-  handleRefactorCode: () => Promise<void>;
-  applyRefactor: () => void;
+  handleRefactorCode: () => Promise<void>; 
+  applyRefactor: () => void; 
   previousGeneratedCode: string | null;
   undoRefactor: () => void;
 }
@@ -41,18 +41,18 @@ const CodeContext = createContext<CodeContextType | undefined>(undefined);
 
 export const CodeProvider = ({ children }: { children: ReactNode }) => {
   const [prompt, setPrompt] = useState<string>('');
-  const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+  const [generatedCode, setGeneratedCode] = useState<string | null>(null); 
   const [previousGeneratedCode, setPreviousGeneratedCode] = useState<string | null>(null);
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false); 
+  const [error, setError] = useState<string | null>(null); 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [isRefactorModalOpen, setIsRefactorModalOpen] = useState<boolean>(false);
   const [refactorPrompt, setRefactorPrompt] = useState<string>('');
-  const [refactoredCode, setRefactoredCode] = useState<string | null>(null);
-  const [isRefactoring, setIsRefactoring] = useState<boolean>(false);
-  const [refactorError, setRefactorError] = useState<string | null>(null);
+  const [refactoredCode, setRefactoredCode] = useState<string | null>(null); 
+  const [isRefactoring, setIsRefactoring] = useState<boolean>(false); 
+  const [refactorError, setRefactorError] = useState<string | null>(null); 
 
   const parseHtmlString = useCallback((htmlString: string | null): GeneratedFile[] => {
     if (!htmlString || typeof htmlString !== 'string' || htmlString.trim() === '') {
@@ -66,7 +66,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     if (generatedCode) {
       const files = parseHtmlString(generatedCode);
       setGeneratedFiles(files);
-      if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:')) {
+      if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:') && !files[0].content.startsWith('<!-- WARNING:') && !files[0].content.startsWith('<!-- CRITICAL_ERROR:')) {
         try {
           const blob = new Blob([files[0].content], { type: 'text/html' });
           newPreviewUrl = URL.createObjectURL(blob);
@@ -79,7 +79,6 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setGeneratedFiles([]);
     }
 
-    // Clean up old URL before setting new one
     setPreviewUrl(currentOldUrl => {
       if (currentOldUrl) {
         URL.revokeObjectURL(currentOldUrl);
@@ -87,7 +86,6 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       return newPreviewUrl;
     });
 
-    // Ensure the new URL is cleaned up if the component unmounts or if newPreviewUrl itself is updated
     return () => {
       if (newPreviewUrl) {
         URL.revokeObjectURL(newPreviewUrl);
@@ -105,31 +103,31 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     setGeneratedCode(null);
     setPreviousGeneratedCode(null);
-    setRefactoredCode(null);
+    setRefactoredCode(null); 
 
     try {
       const result: GenerateCodeOutput = await generateCode({ prompt });
       if (result && typeof result.code === 'string') {
         setGeneratedCode(result.code);
         if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- WARNING:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
-          setError(result.code.trim() === '' ? 'AI returned empty content.' : result.code);
+          setError(result.code.trim() === '' ? 'AI returned empty content.' : `Error from AI: ${result.code}`);
         }
       } else {
-        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY. The AI model itself provided no content or an invalid structure.';
+        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY (GenerateCode).';
         setError(nullErrorMsg);
-        setGeneratedCode(`<!-- ${nullErrorMsg} (handled in context) -->`);
+        setGeneratedCode(`<!-- ${nullErrorMsg} -->`);
       }
     } catch (err) {
       console.error('Error in handleGenerateCode:', err);
       const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
       setError(errorMessage);
-      setGeneratedCode(`<!-- Context Error: ${errorMessage.replace(/-->/g, '--&gt;')} -->`);
+      setGeneratedCode(`<!-- Context Error (GenerateCode): ${errorMessage.replace(/-->/g, '--&gt;')} -->`);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleRefactorCode = async () => {
+  const handleRefactorCode = async () => { 
     if (!refactorPrompt) {
       setRefactorError('Please enter refactoring instructions.');
       return;
@@ -141,20 +139,20 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
     setIsRefactoring(true);
     setRefactorError(null);
-    setRefactoredCode(null);
+    setRefactoredCode(null); 
 
     try {
-      const currentGeneratedCode = generatedCode;
-      const result: RefactorCodeOutput = await refactorCode({ code: currentGeneratedCode, prompt: refactorPrompt });
+      const currentCodeToRefactor = generatedCode; 
+      const result: RefactorCodeOutput = await refactorCode({ code: currentCodeToRefactor, prompt: refactorPrompt });
       if (result && typeof result.code === 'string') {
-        setRefactoredCode(result.code);
+        setRefactoredCode(result.code); 
         if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- WARNING:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
-           setRefactorError(result.code.trim() === '' ? 'AI returned empty refactored code.' : result.code);
+           setRefactorError(result.code.trim() === '' ? 'AI returned empty refactored code.' : `Error from AI: ${result.code}`);
         }
       } else {
-        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY_FOR_REFACTOR. The AI model provided no content or an invalid structure for refactoring.';
+        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY_FOR_REFACTOR.';
         setRefactorError(nullErrorMsg);
-        setRefactoredCode(`<!-- ${nullErrorMsg} (handled in context) -->\n${currentGeneratedCode || ''}`);
+        setRefactoredCode(`<!-- ${nullErrorMsg} -->\n${currentCodeToRefactor || ''}`);
       }
     } catch (err) {
       console.error('Error in handleRefactorCode:', err);
@@ -166,15 +164,15 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const applyRefactor = () => {
-    if (refactoredCode !== null && typeof refactoredCode === 'string' && !(refactoredCode.startsWith('<!-- Error:') || refactoredCode.startsWith('<!-- WARNING:') || refactoredCode.startsWith('<!-- CRITICAL_ERROR:'))) {
-      setPreviousGeneratedCode(generatedCode);
-      setGeneratedCode(refactoredCode);
-      setRefactoredCode(null);
+  const applyRefactor = () => { 
+    if (refactoredCode && typeof refactoredCode === 'string' && !(refactoredCode.startsWith('<!-- Error:') || refactoredCode.startsWith('<!-- WARNING:') || refactoredCode.startsWith('<!-- CRITICAL_ERROR:'))) {
+      setPreviousGeneratedCode(generatedCode); 
+      setGeneratedCode(refactoredCode); 
+      setRefactoredCode(null); 
       setRefactorPrompt('');
       setIsRefactorModalOpen(false);
-      setError(null);
-      setRefactorError(null);
+      setError(null); 
+      setRefactorError(null); 
     } else {
       setRefactorError(refactoredCode === null ? "Cannot apply changes: No refactored code available." : "Cannot apply changes: Refactored code contains errors or is empty.");
     }
@@ -186,7 +184,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setPreviousGeneratedCode(null);
       setError(null);
       setRefactorError(null);
-      setRefactoredCode(null);
+      setRefactoredCode(null); 
     }
   };
 
@@ -215,14 +213,9 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePreview = useCallback(() => {
-    // This function's body is effectively handled by the useEffect hook watching `generatedCode`
-    // We keep it as a no-op or a re-trigger if necessary, but direct manipulation
-    // of previewUrl here can lead to loops if not careful.
-    // The useEffect on generatedCode is the primary mechanism for updating previewUrl.
-    // Forcing a refresh can be done by clearing and re-deriving from generatedCode if needed.
     if (generatedCode) {
       const files = parseHtmlString(generatedCode);
-      if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:')) {
+      if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:') && !files[0].content.startsWith('<!-- WARNING:') && !files[0].content.startsWith('<!-- CRITICAL_ERROR:')) {
         try {
           const blob = new Blob([files[0].content], { type: 'text/html' });
           const newUrl = URL.createObjectURL(blob);

@@ -211,10 +211,10 @@ const generateCodeFlow = ai.defineFlow(
     outputSchema: GenerateCodeOutputSchema, // Expects { code: string }
   },
   async (input): Promise<GenerateCodeOutput> => {
-    console.log("[generateCodeFlow] Starting code generation (single attempt, JSON output). User prompt:", input.prompt);
+    console.log("[generateCodeFlow] Starting code generation. User prompt:", input.prompt);
     
     try {
-      const { output } = await generateCodePrompt(input); // output is GenerateCodeOutputSchema based on definition
+      const { output } = await generateCodePrompt(input); 
       
       if (!output || typeof output.code !== 'string') {
         console.error("[generateCodeFlow] CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_STRUCTURE_FOR_CODE_PROPERTY. Output was:", output);
@@ -226,11 +226,11 @@ const generateCodeFlow = ai.defineFlow(
         return { code: "<!-- WARNING: AI_MODEL_RETURNED_EMPTY_STRING_FOR_CODE_PROPERTY. -->" };
       }
       
-      console.log(`[generateCodeFlow] Single attempt JSON generation successful. Code length: ${output.code.length}, Lines: ${output.code.split('\n').length}`);
+      console.log(`[generateCodeFlow] Code generation successful. Code length: ${output.code.length}, Lines: ${output.code.split('\n').length}`);
       return output;
 
     } catch (error: any) {
-      let errorMessage = "Unknown error occurred during code generation flow's main try-catch.";
+      let errorMessage = "Unknown error occurred during code generation flow.";
       if (error instanceof Error) {
         errorMessage = error.message;
         if (error.stack) {
@@ -243,10 +243,8 @@ const generateCodeFlow = ai.defineFlow(
           errorMessage = JSON.stringify(error);
         } catch (e) { /* ignore stringify error */ }
       }
-      console.error("[generateCodeFlow] Critical error in flow's main try-catch:", errorMessage);
-      return { code: `<!-- ERROR_DURING_CODE_GENERATION_FLOW_MAIN_CATCH: ${errorMessage.replace(/-->/g, '--&gt;')} -->` };
+      console.error("[generateCodeFlow] Critical error in flow:", errorMessage);
+      return { code: `<!-- ERROR_DURING_CODE_GENERATION_FLOW: ${errorMessage.replace(/-->/g, '--&gt;')} -->` };
     }
   }
 );
-
-    
