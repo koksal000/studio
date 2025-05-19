@@ -172,11 +172,11 @@ ABSOLUTELY NO MARKDOWN, NO EXPLANATORY TEXT OUTSIDE THE JSON STRUCTURE. ONLY THE
 
 If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL, or if you believe the request is fundamentally unachievable), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: The request is too complex to fulfill. -->" } or { "code": "<!-- Error: Content generation blocked by safety. -->" }).
 
-TARGET OUTPUT LENGTH for the HTML code string: AIM FOR 500-1500+ LINES OF CODE for any non-trivial request. Even a very short user prompt (e.g., "a button") should result in a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section, demonstrating deep interpretation and proactive feature addition.
+TARGET OUTPUT LENGTH for the HTML code string: AIM FOR A MINIMUM OF 1000 LINES OF CODE. For any non-trivial request, and even for very short user prompts (e.g., "a button"), you MUST proactively generate a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section (potentially 1000-1500+ lines), demonstrating deep interpretation and proactive feature addition.
 
 Follow these instructions ABSOLUTELY AND STRICTLY:
 
-1.  **CRITICAL: ADHERE TO THE 100 RULES (BELOW) AND EXPAND UPON THEM:** You MUST ABSOLUTELY follow these 100 rules as a MINIMUM baseline. Your goal is to EXCEED these rules, adding even more depth, features, and polish.
+1.  **CRITICAL: ADHERE TO THE 100 RULES (BELOW) AND EXPAND UPON THEM (EXTREMELY IMPORTANT):** You MUST ABSOLUTELY follow these 100 rules as a MINIMUM baseline. Your goal is to EXCEED these rules, adding even more depth, features, and polish.
     ${HUNDRED_RULES}
 
 2.  **PROACTIVE & COMPREHENSIVE DEVELOPMENT (EXTREMELY IMPORTANT):** Even if the user's prompt is very short or simple (e.g., "create a button"), you MUST anticipate related features, consider edge cases, and build a comprehensive and functional mini-application or website section. Your output should ALWAYS be substantial. Create a full experience. DO NOT generate short, trivial code snippets. Think: what other panels, modals, settings, animations, interactions, and data representations would make this truly impressive and complete? Add them!
@@ -248,3 +248,4 @@ const generateCodeFlow = ai.defineFlow(
     }
   }
 );
+
