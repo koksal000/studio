@@ -143,7 +143,7 @@ const generateCodePrompt = ai.definePrompt({
   output: {
     schema: GenerateCodeOutputSchema,
   },
-  prompt: `You are an expert web developer. Your primary directive is to generate comprehensive, visually stunning, and feature-rich web applications based on user prompts, ALWAYS adhering to the detailed rules and UI/UX guidelines provided below, regardless of the brevity of the user's initial prompt. Your goal is to create complete experiences, not just isolated snippets.
+  prompt: `You are an expert web developer. Your primary directive is to generate comprehensive, visually stunning, and feature-rich web applications based on user prompts, ALWAYS adhering to the detailed rules and UI/UX guidelines provided below, regardless of the brevity of the user's initial prompt. Your goal is to create complete experiences, not just isolated snippets. EVEN A VERY SHORT USER PROMPT SHOULD RESULT IN A SUBSTANTIAL, FEATURE-RICH OUTPUT THAT IS HUNDREDS, IF NOT THOUSANDS, OF LINES LONG.
 
 Follow these instructions ABSOLUTELY AND STRICTLY:
 
@@ -160,7 +160,7 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
 2.  **CRITICAL: Adhere to the 100 Rules:** You MUST ABSOLUTELY follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
     ${HUNDRED_RULES}
 
-3.  **ALWAYS Interpret the Prompt Broadly & Expand SIGNIFICANTLY:** Even if the user's prompt is very short or simple, you MUST anticipate related features, consider edge cases, and build a comprehensive and functional mini-application or website section within the single HTML file, guided by the 100 rules. Your output should ALWAYS be substantial and aim for hundreds, if not thousands, of lines of high-quality code, demonstrating a full interpretation of the user's underlying intent and the 100 rules. Create a full experience.
+3.  **ALWAYS Interpret the Prompt Broadly & Expand SIGNIFICANTLY:** Even if the user's prompt is very short or simple (e.g., "create a button"), you MUST anticipate related features, consider edge cases, and build a comprehensive and functional mini-application or website section within the single HTML file, guided by the 100 rules. Your output should ALWAYS be substantial and aim for hundreds, if not thousands, of lines of high-quality code, demonstrating a full interpretation of the user's underlying intent and the 100 rules. Create a full experience. DO NOT generate short, trivial code snippets.
 
 4.  **MANDATORY: Advanced UI/UX Implementation:** The generated application MUST be visually outstanding and highly interactive. Implement the following advanced UI/UX elements extensively AND WITH GREAT DETAIL:
     *   **Transitions:** Smooth and meaningful transitions for state changes, loading, reveals, etc.
@@ -174,7 +174,7 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
 5.  **Application-Section Complexity:** The final output should resemble a well-developed section of a modern application or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel.
 6.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required.
 7.  **No External Dependencies:** Do not include links to external libraries or frameworks unless explicitly requested and absolutely essential for the core functionality described (even then, prefer vanilla solutions if feasible).
-8.  **Completeness:** Ensure the generated HTML code is as complete as possible. Output the *entire* file content for the "code" value, starting with \`<!DOCTYPE html>\`.
+8.  **Completeness:** Ensure the generated HTML code is as complete as possible. Output the *entire* file content for the "code" value, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`.
 
 User Prompt:
 {{{prompt}}}
@@ -197,12 +197,23 @@ const generateCodeFlow = ai.defineFlow(
          const errorMessage = "CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_EMPTY_CODE. The AI model provided no content or an invalid structure. Please try a simpler prompt or check your API key and model configuration.";
          return { code: `<!-- ${errorMessage} -->` };
        }
+       // Log the length of the received code
+       console.log("[generateCodeFlow] Received code from AI (length):", output.code.length);
+
+       // Check for model-returned errors or empty string
        if (output.code.trim() === '' || output.code.startsWith('<!-- Error:') || output.code.startsWith('<!-- Warning:') || output.code.startsWith('<!-- CRITICAL_ERROR:')) {
             console.warn("[generateCodeFlow] Model returned an error/warning or empty code in the 'code' field:", output.code);
             // Return the error/warning comment as is, as it might contain useful info from the model
             return { code: output.code };
        }
-       console.log("[generateCodeFlow] Received code from AI (length):", output.code.length);
+
+       // Basic check for HTML completeness (can be expanded)
+       if (!output.code.toLowerCase().startsWith('<!doctype html>') || !output.code.toLowerCase().endsWith('</html>')) {
+           console.warn("[generateCodeFlow] Generated code might be incomplete or not valid HTML. Length:", output.code.length);
+           // Optionally, return a specific warning or attempt to fix, though fixing is complex.
+           // For now, return as is but log a warning.
+       }
+
        return output;
      } catch (error) {
         console.error("[generateCodeFlow] Error during call to generateCodePrompt:", error);
@@ -210,6 +221,7 @@ const generateCodeFlow = ai.defineFlow(
         if (message.includes("Candidate was blocked due to")) {
             return { code: `<!-- Error: Content generation blocked by safety settings. Details: ${message} -->` };
         }
+        // Check for schema validation errors more specifically
         if (message.toLowerCase().includes("schema validation failed")) {
              return { code: `<!-- ERROR_GENKIT_SCHEMA_VALIDATION: The AI model's response did not match the expected JSON format. Details: ${message} -->` };
         }
@@ -217,3 +229,4 @@ const generateCodeFlow = ai.defineFlow(
      }
    }
 );
+
