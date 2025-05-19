@@ -34,7 +34,7 @@ export async function refactorCode(input: RefactorCodeInput): Promise<RefactorCo
   try {
     return await refactorCodeFlow(input);
   } catch (error) {
-    console.error("Critical error in refactorCode flow:", error);
+    console.error("[refactorCode export] Critical error in refactorCode flow:", error);
     return `<!-- Error refactoring code: ${error instanceof Error ? error.message : String(error)} -->\n${input.code}`;
   }
 }
@@ -61,7 +61,8 @@ You will be given code and a prompt describing how to refactor the code. Apply t
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
     The very first character of your entire response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
 
-    If, for any reason (such as safety constraints or an overly complex/impossible request), you cannot generate the refactored HTML code as requested, then your entire response MUST be a single HTML comment explaining the reason (e.g., \`<!-- Error: Cannot refactor due to X, Y, Z. -->\` or \`<!-- Error: Content refactoring blocked by safety. -->\`).
+    If, for any reason (such as safety constraints or an overly complex/impossible request that you cannot fulfill), you CANNOT generate the refactored HTML code as requested, then your entire response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: Cannot refactor due to X, Y, Z. -->\` or \`<!-- Error: Content refactoring blocked by safety. -->\`).
+    Do NOT return null or an empty string if you are providing an explanatory comment.
     Otherwise, if you *can* fulfill the request, provide ONLY the complete refactored HTML code.
 
 2.  **Completeness:** Ensure the output is the *entire*, refactored code. If the full content cannot be generated in one response, provide as much as possible. The system will attempt to complete it.
@@ -160,93 +161,105 @@ const refactorCodeFlow = ai.defineFlow(
     let attempts = 0;
 
     try {
-      console.log("Attempting initial code refactor with prompt:", input.prompt);
-      let response = await refactorCodePrompt(input);
+      console.log("[refactorCodeFlow] Attempting initial code refactor. User prompt:", input.prompt);
+      const promptResponse = await refactorCodePrompt(input);
 
-      if (response.output === null) {
-        console.error("Initial refactor returned null from the model.");
-        return `<!-- Error: AI model returned null during initial refactor. This might indicate an API key issue or the model cannot fulfill the request. -->\n${input.code}`;
+      if (promptResponse.output === null) {
+        console.error("[refactorCodeFlow] Model response output is NULL. This means the AI model did not return any string content for refactoring.");
+        // Return original code with an error comment prepended
+        return `<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_FOR_REFACTOR. The AI model provided no content. -->\n${input.code}`;
       }
-      let generatedHtml = cleanupCode(response.output);
+      
+      let generatedHtml = cleanupCode(promptResponse.output);
       fullRefactoredCode = generatedHtml;
-      console.log("Initial refactored HTML (cleaned, length):", fullRefactoredCode.length);
+      console.log("[refactorCodeFlow] Initial refactored HTML (cleaned, length):", fullRefactoredCode.length);
 
 
-      if (fullRefactoredCode.trim() === '' && response.output !== null) {
-        console.warn("Initial refactor resulted in an empty string after cleanup, though the model did not return null. Original output:", response.output);
-        return `<!-- Warning: AI returned an empty string during refactor. The model might have attempted an HTML comment that was removed. -->\n${input.code}`;
+      if (fullRefactoredCode.trim() === '' && promptResponse.output !== null) {
+        console.warn("[refactorCodeFlow] Initial refactor resulted in an empty string after cleanup. Original model output:", promptResponse.output);
+        return `<!-- WARNING: AI_REFACTOR_EMPTY_AFTER_CLEANUP. Model might have attempted an HTML comment that was removed. -->\n${input.code}`;
       }
 
-      if (fullRefactoredCode.startsWith('<!-- Error:') || fullRefactoredCode.startsWith('<!-- Warning:')) {
-         console.warn("AI model returned an error/warning comment directly during refactor:", fullRefactoredCode);
+      if (fullRefactoredCode.startsWith('<!-- Error:') || fullRefactoredCode.startsWith('<!-- Warning:') || fullRefactoredCode.startsWith('<!-- CRITICAL_ERROR:')) {
+         console.warn("[refactorCodeFlow] AI model returned an error/warning comment directly during refactor:", fullRefactoredCode);
          // If the model intentionally returned an error comment, we should return it as is,
-         // rather than appending the original code, as the user needs to see the model's message.
-         return fullRefactoredCode;
+         // potentially appended with original code if it's not a critical model failure message.
+         if (fullRefactoredCode.startsWith('<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL')) {
+            return `${fullRefactoredCode}\n${input.code}`; // Append original if model returned null
+         }
+         return fullRefactoredCode; // Otherwise, just the model's comment
       }
 
       while (!isHtmlComplete(fullRefactoredCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
          attempts++;
-         console.log(`Refactored code incomplete (attempt ${attempts}). Requesting continuation... Current length: ${fullRefactoredCode.length}, Ends with: "${fullRefactoredCode.slice(-50)}"`);
+         console.log(`[refactorCodeFlow] Refactored code incomplete (attempt ${attempts}). Requesting continuation... Current length: ${fullRefactoredCode.length}, Ends with: "${fullRefactoredCode.slice(-50)}"`);
 
          try {
              const continuationResponse = await continueRefactorCodePrompt({
-                 originalCode: input.code,
+                 originalCode: input.code, // Pass original code for context
                  refactorPrompt: input.prompt,
                  partialRefactoredCode: fullRefactoredCode,
              });
 
              if (continuationResponse.output === null) {
-                console.warn(`Refactor continuation attempt ${attempts} returned null from the model.`);
-                return `${fullRefactoredCode}\n<!-- Warning: AI returned null during refactor continuation attempt ${attempts}. Code may be incomplete. -->`;
+                console.warn(`[refactorCodeFlow] Refactor continuation attempt ${attempts} returned null from the model.`);
+                return `${fullRefactoredCode}\n<!-- WARNING: AI_REFACTOR_CONTINUATION_NULL. Code may be incomplete. -->`;
              }
 
              const continuationHtml = cleanupCode(continuationResponse.output);
-             console.log(`Refactor continuation attempt ${attempts} HTML (cleaned, length): ${continuationHtml.length}`);
+             console.log(`[refactorCodeFlow] Refactor continuation attempt ${attempts} HTML (cleaned, length): ${continuationHtml.length}`);
 
              if (continuationHtml) {
-                 if (continuationHtml.startsWith('<!-- Error:') || continuationHtml.startsWith('<!-- Warning:')) {
-                      console.warn(`Refactor continuation attempt ${attempts} returned an error/warning comment:`, continuationHtml);
+                 if (continuationHtml.startsWith('<!-- Error:') || continuationHtml.startsWith('<!-- Warning:') || continuationHtml.startsWith('<!-- CRITICAL_ERROR:')) {
+                      console.warn(`[refactorCodeFlow] Refactor continuation attempt ${attempts} returned an error/warning comment:`, continuationHtml);
                       return `${fullRefactoredCode}\n${continuationHtml}`;
                   }
                  fullRefactoredCode += '\n' + continuationHtml;
-                 console.log(`Appended refactor continuation. Total length: ${fullRefactoredCode.length}`);
-             } else {
-                  console.warn(`Refactor continuation attempt ${attempts} returned empty code after cleanup. Original output from continuation:`, continuationResponse.output);
+                 console.log(`[refactorCodeFlow] Appended refactor continuation. Total length: ${fullRefactoredCode.length}`);
+             } else { // Continuation cleanup resulted in empty string
+                  console.warn(`[refactorCodeFlow] Refactor continuation attempt ${attempts} returned empty code after cleanup. Original output:`, continuationResponse.output);
                   if (fullRefactoredCode.length < 100 && !fullRefactoredCode.toLowerCase().includes("<html")) {
-                    console.error("Initial refactor and continuation are non-HTML or too short. Aborting.");
-                    return `<!-- Error: AI model did not produce valid refactored HTML after ${attempts} attempts. Output was: ${fullRefactoredCode.substring(0,200)} -->\n${input.code}`;
+                    console.error("[refactorCodeFlow] Initial refactor and continuation are non-HTML or too short. Aborting.");
+                    return `<!-- CRITICAL_ERROR: AI_REFACTOR_INVALID_HTML_AFTER_ATTEMPTS. Output: ${fullRefactoredCode.substring(0,200)} -->\n${input.code}`;
                   }
-                  break;
+                  break; 
              }
          } catch (continuationError) {
-             console.error(`Error during refactor continuation attempt ${attempts}:`, continuationError);
-             return `${fullRefactoredCode}\n<!-- Error during refactor continuation: ${continuationError instanceof Error ? continuationError.message : String(continuationError)} -->`;
+             console.error(`[refactorCodeFlow] Error during refactor continuation attempt ${attempts}:`, continuationError);
+             return `${fullRefactoredCode}\n<!-- ERROR_DURING_REFACTOR_CONTINUATION: ${continuationError instanceof Error ? continuationError.message : String(continuationError)} -->`;
          }
       }
 
-      if (!isHtmlComplete(fullRefactoredCode) && !(fullRefactoredCode.startsWith('<!-- Error:') || fullRefactoredCode.startsWith('<!-- Warning:'))) {
-          console.warn(`Refactored code might still be incomplete after ${attempts} continuation attempts.`);
+      if (!isHtmlComplete(fullRefactoredCode) && !(fullRefactoredCode.startsWith('<!-- Error:') || fullRefactoredCode.startsWith('<!-- Warning:') || fullRefactoredCode.startsWith('<!-- CRITICAL_ERROR:'))) {
+          console.warn(`[refactorCodeFlow] Refactored code might still be incomplete after ${attempts} continuation attempts.`);
           if (fullRefactoredCode.length < 200 && !fullRefactoredCode.toLowerCase().includes("<html") && !fullRefactoredCode.startsWith("<!DOCTYPE html>")) {
-            return `<!-- Error: AI model did not produce valid refactored HTML content. Received: ${fullRefactoredCode.substring(0,500)} -->\n${input.code}`;
+            return `<!-- CRITICAL_ERROR: AI_REFACTOR_SHORT_INVALID_HTML. Received: ${fullRefactoredCode.substring(0,500)} -->\n${input.code}`;
           }
-          return `${fullRefactoredCode}\n<!-- Warning: Refactored code might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->`;
+          return `${fullRefactoredCode}\n<!-- WARNING: REFACTOR_MAY_BE_INCOMPLETE. Max attempts reached. -->`;
       } else {
-          console.log("Refactored code generation appears complete or ended with an AI-provided error/warning.");
+          console.log("[refactorCodeFlow] Refactored code generation appears complete or ended with an AI-provided error/warning.");
       }
 
-      if (!(fullRefactoredCode.startsWith('<!-- Error:') || fullRefactoredCode.startsWith('<!-- Warning:')) && fullRefactoredCode.trim().length < 200 && !fullRefactoredCode.toLowerCase().includes("<html")) {
-        console.warn("Refactored code is suspiciously short and might not be valid HTML:", fullRefactoredCode.substring(0,100));
-        return `<!-- Error: Refactored code is too short or not valid HTML. Output: ${fullRefactoredCode.substring(0,500)} -->\n${input.code}`;
+      if (!(fullRefactoredCode.startsWith('<!-- Error:') || fullRefactoredCode.startsWith('<!-- Warning:') || fullRefactoredCode.startsWith('<!-- CRITICAL_ERROR:')) && 
+          fullRefactoredCode.trim().length > 0 &&
+          fullRefactoredCode.trim().length < 200 && 
+          !fullRefactoredCode.toLowerCase().includes("<html")) {
+        console.warn("[refactorCodeFlow] Refactored code is suspiciously short and might not be valid HTML:", fullRefactoredCode.substring(0,100));
+        return `<!-- WARNING: AI_REFACTOR_VERY_SHORT_CONTENT. Output: ${fullRefactoredCode.substring(0,500)} -->\n${input.code}`;
       }
 
       return fullRefactoredCode;
     } catch (initialError) {
-      console.error("Error during initial code refactoring (or its schema validation):", initialError);
+      console.error("[refactorCodeFlow] Top-level error during initial code refactoring (or schema validation):", initialError);
       const message = initialError instanceof Error ? initialError.message : String(initialError);
       if (message.includes("Candidate was blocked due to")) {
-        return `<!-- Error: Content refactoring blocked by safety settings. Please revise your prompt or contact support. Details: ${message} -->\n${input.code}`;
+        return `<!-- Error: Content refactoring blocked by safety settings. Details: ${message} -->\n${input.code}`;
       }
-      return `<!-- Error during initial code refactoring: ${message} -->\n${input.code}`;
+       if (message.toLowerCase().includes("schema validation failed")) {
+           return `<!-- ERROR_GENKIT_SCHEMA_VALIDATION_REFACTOR: Model response mismatch. Details: ${message} -->\n${input.code}`;
+      }
+      return `<!-- ERROR_DURING_INITIAL_REFACTOR_TRY_CATCH: ${message} -->\n${input.code}`;
     }
   }
 );
+

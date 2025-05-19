@@ -137,7 +137,7 @@ export async function generateCode(input: GenerateCodeInput): Promise<GenerateCo
   try {
     return await generateCodeFlow(input);
   } catch (error) {
-    console.error("Critical error in generateCode flow:", error);
+    console.error("[generateCode export] Critical error in generateCode flow:", error);
     return `<!-- Error generating code: ${error instanceof Error ? error.message : String(error)} -->`;
   }
 }
@@ -162,7 +162,8 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
     The very first character of your entire response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
 
-    If, for any reason (such as safety constraints or an overly complex/impossible request), you cannot generate the complete HTML code as requested, then your entire response MUST be a single HTML comment explaining the reason (e.g., \`<!-- Error: The request is too complex to fulfill. -->\` or \`<!-- Error: Content generation blocked by safety. -->\`).
+    If, for any reason (such as safety constraints or an overly complex/impossible request that you cannot fulfill), you CANNOT generate the complete HTML code as requested, then your entire response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: The request is too complex to fulfill. -->\` or \`<!-- Error: Content generation blocked by safety. -->\`).
+    Do NOT return null or an empty string if you are providing an explanatory comment.
     Otherwise, if you *can* fulfill the request, provide ONLY the complete HTML code.
 
 2.  **Adhere to the 100 Rules:** You MUST follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
@@ -264,31 +265,32 @@ const generateCodeFlow = ai.defineFlow(
      let attempts = 0;
 
      try {
-       console.log("Attempting initial code generation with prompt:", input.prompt);
-       let response = await generateCodePrompt(input);
+       console.log("[generateCodeFlow] Attempting initial code generation. User prompt:", input.prompt);
+       const promptResponse = await generateCodePrompt(input);
 
-       if (response.output === null) {
-         console.error("Initial generation returned null from the model.");
-         return "<!-- Error: AI model returned null during initial generation. This might indicate an API key issue, the model cannot fulfill the request, or a temporary API problem. -->";
+       if (promptResponse.output === null) {
+         console.error("[generateCodeFlow] Model response output is NULL. This means the AI model did not return any string content. Check API key, model capacity for the complex prompt, or if the model is configured to return null for certain rejections.");
+         return "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL. The AI model itself provided no content for the initial generation. This usually indicates an API key issue, a problem with the AI model's ability to handle the request, or a temporary service disruption. -->";
        }
-       let generatedHtml = cleanupCode(response.output);
+       
+       let generatedHtml = cleanupCode(promptResponse.output);
        fullCode = generatedHtml;
-       console.log("Initial generated HTML (cleaned, length):", fullCode.length);
+       console.log("[generateCodeFlow] Initial generated HTML (cleaned, length):", fullCode.length);
 
 
-       if (fullCode.trim() === '' && response.output !== null) {
-         console.warn("Initial generation resulted in an empty string after cleanup, though the model did not return null. Original output:", response.output);
-         return "<!-- Warning: AI returned an empty string after cleanup. The model might have attempted an HTML comment that was removed. -->";
+       if (fullCode.trim() === '' && promptResponse.output !== null) { // Check if cleanup resulted in empty string
+         console.warn("[generateCodeFlow] Initial generation resulted in an empty string after cleanup, though the model did not return null. Original model output was:", promptResponse.output);
+         return "<!-- WARNING: AI_RETURNED_EMPTY_STRING_AFTER_CLEANUP. The model might have attempted an HTML comment that was removed by cleanup, or it returned only formatting characters. -->";
        }
 
-       if (fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:')) {
-         console.warn("AI model returned an error/warning comment directly:", fullCode);
-         return fullCode;
+       if (fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:') || fullCode.startsWith('<!-- CRITICAL_ERROR:') || fullCode.startsWith('<!-- WARNING:')) {
+         console.warn("[generateCodeFlow] AI model returned an error/warning comment directly, or it was an empty string after cleanup:", fullCode);
+         return fullCode; // Return the AI's own error/warning comment, or our warning.
        }
 
        while (!isHtmlComplete(fullCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
           attempts++;
-          console.log(`Code generation incomplete (attempt ${attempts}). Requesting continuation... Current length: ${fullCode.length}, Ends with: "${fullCode.slice(-50)}"`);
+          console.log(`[generateCodeFlow] Code generation incomplete (attempt ${attempts}). Requesting continuation... Current length: ${fullCode.length}, Ends with: "${fullCode.slice(-50)}"`);
 
           try {
               const continuationResponse = await continueCodePrompt({
@@ -297,57 +299,71 @@ const generateCodeFlow = ai.defineFlow(
               });
               
               if (continuationResponse.output === null) {
-                  console.warn(`Continuation attempt ${attempts} returned null from the model.`);
-                  return `${fullCode}\n<!-- Warning: AI returned null during continuation attempt ${attempts}. Code may be incomplete. -->`;
+                  console.warn(`[generateCodeFlow] Continuation attempt ${attempts} returned null from the model.`);
+                  // Append a warning to the existing code; don't overwrite it
+                  return `${fullCode}\n<!-- WARNING: AI_CONTINUATION_RETURNED_NULL. Model returned null during continuation attempt ${attempts}. Code may be incomplete. -->`;
               }
 
               const continuationHtml = cleanupCode(continuationResponse.output); 
-              console.log(`Continuation attempt ${attempts} HTML (cleaned, length): ${continuationHtml.length}`);
+              console.log(`[generateCodeFlow] Continuation attempt ${attempts} HTML (cleaned, length): ${continuationHtml.length}`);
 
               if (continuationHtml) {
-                  if (continuationHtml.startsWith('<!-- Error:') || continuationHtml.startsWith('<!-- Warning:')) {
-                      console.warn(`Continuation attempt ${attempts} returned an error/warning comment:`, continuationHtml);
-                      return `${fullCode}\n${continuationHtml}`;
+                  if (continuationHtml.startsWith('<!-- Error:') || continuationHtml.startsWith('<!-- Warning:') || continuationHtml.startsWith('<!-- CRITICAL_ERROR:') || continuationHtml.startsWith('<!-- WARNING:')) {
+                      console.warn(`[generateCodeFlow] Continuation attempt ${attempts} returned an error/warning comment:`, continuationHtml);
+                      return `${fullCode}\n${continuationHtml}`; // Append the error/warning from continuation
                   }
                   fullCode += '\n' + continuationHtml; 
-                  console.log(`Appended continuation. Total length: ${fullCode.length}`);
-              } else {
-                   console.warn(`Continuation attempt ${attempts} returned empty code after cleanup. Original output from continuation:`, continuationResponse.output);
-                   if (fullCode.length < 100 && !fullCode.toLowerCase().includes("<html")) {
-                        console.error("Initial generation and continuation are non-HTML or too short. Aborting.");
-                        return `<!-- Error: AI model did not produce valid HTML after ${attempts} attempts. Initial output was: ${fullCode.substring(0, 200)} -->`;
+                  console.log(`[generateCodeFlow] Appended continuation. Total length: ${fullCode.length}`);
+              } else { // Continuation cleanup resulted in empty string
+                   console.warn(`[generateCodeFlow] Continuation attempt ${attempts} returned empty code after cleanup. Original output from continuation:`, continuationResponse.output);
+                   if (fullCode.length < 100 && !fullCode.toLowerCase().includes("<html")) { // If initial part was also bad
+                        console.error("[generateCodeFlow] Initial generation and continuation are non-HTML or too short. Aborting.");
+                        return `<!-- CRITICAL_ERROR: AI_PRODUCED_INVALID_HTML_AFTER_ATTEMPTS. Model did not produce valid HTML after ${attempts} attempts. Initial output was: ${fullCode.substring(0, 200)} -->`;
                    }
+                   // If initial part was okay, but continuation was empty, we might have a complete (though shorter than expected) output
                    break; 
               }
           } catch (continuationError) {
-              console.error(`Error during continuation attempt ${attempts}:`, continuationError);
-               return `${fullCode}\n<!-- Error during continuation: ${continuationError instanceof Error ? continuationError.message : String(continuationError)} -->`;
+              console.error(`[generateCodeFlow] Error during continuation attempt ${attempts}:`, continuationError);
+               return `${fullCode}\n<!-- ERROR_DURING_CONTINUATION: ${continuationError instanceof Error ? continuationError.message : String(continuationError)} -->`;
           }
        }
 
-       if (!isHtmlComplete(fullCode) && !(fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:'))) {
-          console.warn(`Code might still be incomplete after ${attempts} continuation attempts. Length: ${fullCode.length}`);
+       // Final checks after loop
+       if (!isHtmlComplete(fullCode) && !(fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:') || fullCode.startsWith('<!-- CRITICAL_ERROR:'))) {
+          console.warn(`[generateCodeFlow] Code might still be incomplete after ${attempts} continuation attempts. Length: ${fullCode.length}`);
           if (fullCode.length < 200 && !fullCode.toLowerCase().includes("<html") && !fullCode.startsWith("<!DOCTYPE html>")) {
-            return `<!-- Error: AI model did not produce valid HTML content. Received: ${fullCode.substring(0,500)} -->`;
+            // If it's really short and doesn't look like HTML, treat it as an error.
+            return `<!-- CRITICAL_ERROR: AI_PRODUCED_SHORT_INVALID_HTML. Final code is too short or not valid HTML. Output: ${fullCode.substring(0,500)} -->`;
           }
-          return `${fullCode}\n<!-- Warning: Code generation might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->`;
+          // Otherwise, append a warning about potential incompleteness
+          return `${fullCode}\n<!-- WARNING: CODE_GENERATION_MAY_BE_INCOMPLETE. Maximum continuation attempts (${MAX_CONTINUATION_ATTEMPTS}) reached. -->`;
        } else {
-           console.log("Code generation appears complete or ended with an AI-provided error/warning.");
+           console.log("[generateCodeFlow] Code generation appears complete or ended with an AI-provided error/warning.");
        }
        
-       if (!(fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:')) && fullCode.trim().length < 200 && !fullCode.toLowerCase().includes("<html")) {
-           console.warn("Generated code is suspiciously short and might not be valid HTML:", fullCode.substring(0,100));
-           return `<!-- Error: Generated code is too short or not valid HTML. Output: ${fullCode.substring(0,500)} -->`;
+       // One last check: if it's not an error/warning comment, but it's very short and doesn't look like HTML, flag it.
+       if (!(fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:') || fullCode.startsWith('<!-- CRITICAL_ERROR:')) && 
+           fullCode.trim().length > 0 && // Ensure it's not an intentionally empty valid HTML
+           fullCode.trim().length < 200 && 
+           !fullCode.toLowerCase().includes("<html")) {
+           console.warn("[generateCodeFlow] Generated code is suspiciously short and might not be valid HTML:", fullCode.substring(0,100));
+           return `<!-- WARNING: AI_PRODUCED_VERY_SHORT_CONTENT. Generated code is suspiciously short and might not be valid HTML. Output: ${fullCode.substring(0,500)} -->`;
        }
 
        return fullCode;
+
      } catch (initialError) { 
-        console.error("Error during initial code generation (or its schema validation):", initialError);
+        console.error("[generateCodeFlow] Top-level error during initial code generation (or its schema validation):", initialError);
         const message = initialError instanceof Error ? initialError.message : String(initialError);
         if (message.includes("Candidate was blocked due to")) {
             return `<!-- Error: Content generation blocked by safety settings. Please revise your prompt or contact support. Details: ${message} -->`;
         }
-        return `<!-- Error during initial code generation: ${message} -->`;
+         if (message.toLowerCase().includes("schema validation failed")) {
+             return `<!-- ERROR_GENKIT_SCHEMA_VALIDATION: The AI model's response did not match the expected format. Details: ${message} -->`;
+        }
+        return `<!-- ERROR_DURING_INITIAL_GENERATION_TRY_CATCH: ${message} -->`;
      }
    }
 );
+
