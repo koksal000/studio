@@ -3,7 +3,6 @@
 
 /**
  * @fileOverview A code generation AI agent based on a prompt.
- * Implements iterative enhancement if the initial code is less than a target line count.
  *
  * - generateCode - A function that handles the code generation process.
  * - GenerateCodeInput - The input type for the generateCode function.
@@ -12,12 +11,6 @@
 
 import {ai} from '@/ai/ai-instance';
 import {z} from 'genkit';
-
-// Helper function to count lines
-const countLines = (str: string | null | undefined): number => {
-  if (!str) return 0;
-  return str.split('\n').length;
-};
 
 // The 100 rules provided by the user (in Turkish)
 const HUNDRED_RULES = `
@@ -134,14 +127,6 @@ const GenerateCodeOutputSchema = z.object({
 export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>;
 
 
-// Schema for the enhancement prompt
-const EnhanceCodeInputSchema = z.object({
-  originalPrompt: z.string().describe("The user's original high-level prompt."),
-  existingCode: z.string().describe("The HTML code generated so far that needs enhancement, expansion, and debugging."),
-});
-export type EnhanceCodeInput = z.infer<typeof EnhanceCodeInputSchema>;
-
-
 export async function generateCode(input: GenerateCodeInput): Promise<GenerateCodeOutput> {
   try {
     return await generateCodeFlow(input);
@@ -167,7 +152,15 @@ const generateCodePrompt = ai.definePrompt({
     schema: GenerateCodeInputSchema,
   },
   output: {
-    schema: GenerateCodeOutputSchema,
+    schema: z.string().nullable(), // Model will return string or null
+  },
+  config: { // Added safety settings
+    safetySettings: [
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+    ],
   },
   prompt: `You are an EXCEPTIONALLY PROACTIVE and CREATIVE expert web developer and AI system designer. Your primary directive is to generate COMPREHENSIVE, VISUALLY STUNNING, and FEATURE-RICH web applications or complete website sections. Your output should be a SINGLE, SELF-CONTAINED HTML FILE with all HTML, CSS (in <style> tags), and JavaScript (in <script> tags) inline.
 
@@ -177,13 +170,13 @@ You are not just a code generator; you are a system architect. Think like an exp
 
 Follow these instructions ABSOLUTELY AND STRICTLY:
 
-1.  **Output Format (CRITICAL):** Your response MUST be a JSON object with a single key "code". The value of "code" MUST be a SINGLE, complete HTML file. This file MUST contain all necessary HTML structure, CSS styles (within <style> tags or inline), and JavaScript logic (within <script> tags).
+1.  **Output Format (CRITICAL):** Your response MUST be the HTML code itself as a PLAIN STRING.
+    **ABSOLUTELY NO JSON WRAPPING, NO MARKDOWN, NO EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES. ONLY THE RAW HTML CODE.**
     The HTML code value MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`.
-    **ABSOLUTELY NO EXPLANATORY TEXT, PREAMBLE, MARKDOWN, OR APOLOGIES WITHIN THE "code" VALUE, OTHER THAN THE HTML ITSELF.**
-    The very first character of the "code" value must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
+    The very first character of your response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
 
-    If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL, or if you believe the request is fundamentally unachievable even with iteration), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: The request is too complex to fulfill. -->\` or \`<!-- Error: Content generation blocked by safety. -->\` or \`<!-- Error: Cannot generate the requested application due to inherent limitations. -->\`).
-    Do NOT return an empty string for the "code" value if you are providing an explanatory comment. "code" CANNOT BE NULL OR EMPTY unless it's a genuine failure to generate any valid content.
+    If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL, or if you believe the request is fundamentally unachievable), you CANNOT generate the complete HTML code as requested, then your response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: The request is too complex to fulfill. -->\` or \`<!-- Error: Content generation blocked by safety. -->\` or \`<!-- Error: Cannot generate the requested application due to inherent limitations. -->\`).
+    Do NOT return an empty string if you are providing an explanatory comment. Your response CANNOT BE NULL OR EMPTY unless it's a genuine failure to generate any valid content.
 
 2.  **CRITICAL: ADHERE TO THE 100 RULES (BELOW) AND EXPAND UPON THEM:** You MUST ABSOLUTELY follow these 100 rules as a MINIMUM baseline. Your goal is to EXCEED these rules, adding even more depth, features, and polish.
     ${HUNDRED_RULES}
@@ -204,43 +197,12 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
 
 7.  **No External Dependencies (Unless Critical and Inlined):** Do not include links to external libraries or frameworks (like Bootstrap, jQuery, external font files) UNLESS specifically requested. If a small, crucial library is needed (e.g., a charting library for a dashboard), its code should ideally be INLINED within the single HTML file if feasible and not overly large. Prefer vanilla JavaScript solutions.
 
-8.  **Completeness & Robustness:** Ensure the generated HTML code is as complete as possible. Test edge cases in your "mental model" of the app. What happens if a user enters invalid data? What does a loading state look like? What about an empty state? Address these. Output the *entire* file content for the "code" value, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`.
+8.  **Completeness & Robustness:** Ensure the generated HTML code is as complete as possible. Test edge cases in your "mental model" of the app. What happens if a user enters invalid data? What does a loading state look like? What about an empty state? Address these. Output the *entire* file content, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`.
 
 User Prompt:
 {{{prompt}}}
 
-Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING COMPLETE HTML, OR HTML COMMENT EXPLAINING FAILURE. "code" CANNOT BE NULL OR EMPTY):`,
-});
-
-const enhanceCodePrompt = ai.definePrompt({
-  name: 'enhanceCodePrompt',
-  input: {
-    schema: EnhanceCodeInputSchema,
-  },
-  output: {
-    schema: GenerateCodeOutputSchema, // Same output schema
-  },
-  prompt: `You are an EXCEPTIONALLY PROACTIVE and CREATIVE expert web developer. You previously generated HTML code based on an original user prompt. The "Existing HTML Code" needs to be SIGNIFICANTLY ENHANCED, EXPANDED, DEBUGGED, and POLISHED to be far more comprehensive, feature-rich, visually stunning, and aim to well exceed 3000-5000 lines. You are not just fixing bugs; you are adding substantial new value and features.
-
-Original User Prompt (for context of the overall goal):
-{{{originalPrompt}}}
-
-Existing HTML Code to Enhance:
-\`\`\`html
-{{{existingCode}}}
-\`\`\`
-
-Your task is to:
-1.  **DRAMATICALLY EXPAND & ENHANCE (CRITICAL):** Add **MULTIPLE NEW, SUBSTANTIAL FEATURES**, UI elements (e.g., new interactive panels, complex modals, entirely new sections/pages within the single HTML structure, data visualizations, user settings). Think broadly about what else could be part of this application. Don't just make small tweaks; aim for MAJOR ADDITIONS that significantly increase functionality and code length. If the existing code is a simple component, expand it into a full application section.
-2.  **DEBUG & REFINE ROBUSTLY:** Carefully review the "Existing HTML Code" for any bugs, logical errors, typos, performance issues, or areas for UI/UX improvement. Fix these issues thoroughly in the new version you generate. Ensure the code is robust, well-structured, and handles edge cases.
-3.  **CRITICAL: RE-APPLY & EXCEED THE 100 RULES & ADVANCED UI/UX (FROM INITIAL PROMPT):** You MUST ABSOLUTELY re-apply and STRICTLY follow the original 100 rules and advanced UI/UX guidelines (Fluid Transitions, "Ultra" Animations, Advanced Interactive Interfaces, Sophisticated Shadows & Lighting, Well-Designed Panels/Modals, Beautiful Gradients, Excellent Graphics, Application-Level Complexity) to ensure comprehensive, high-quality, and user-centric output in the NEW code. Elevate the existing code to a new level of polish and sophistication.
-4.  **SIGNIFICANTLY INCREASE SCOPE & LINE COUNT:** The primary goal is to produce a significantly larger, more feature-complete, and more polished application or website section, aiming for well over 3000 lines, ideally closer to 5000 lines of high-quality code.
-5.  **Output Format (STRICT):** Your response MUST be a JSON object with a single key "code". The value of "code" MUST be the ENTIRE, NEW, FULLY ENHANCED, and COMPLETE HTML file. Do NOT return only the changes or a diff. The HTML code MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`. No explanatory text outside the "code" value.
-    If you cannot fulfill the enhancement or it results in an error (e.g., safety, complexity), the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: Cannot enhance further due to complexity. Existing code remains the best version. -->\`). "code" CANNOT BE NULL OR EMPTY.
-
-Focus on making the application significantly more robust, feature-complete, visually stunning, and much longer than the "Existing HTML Code". If the existing code is 500 lines, your output should aim for 1500-3000+ lines. If it's 1500, aim for 3000-5000+.
-
-Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING THE FULLY ENHANCED HTML, OR HTML COMMENT. "code" CANNOT BE NULL OR EMPTY):`,
+Generated HTML (PLAIN STRING - COMPLETE HTML CODE ONLY, OR HTML COMMENT EXPLAINING FAILURE. RESPONSE CANNOT BE NULL OR EMPTY):`,
 });
 
 
@@ -248,101 +210,49 @@ const generateCodeFlow = ai.defineFlow(
   {
     name: 'generateCodeFlow',
     inputSchema: GenerateCodeInputSchema,
-    outputSchema: GenerateCodeOutputSchema,
+    outputSchema: GenerateCodeOutputSchema, // Expects { code: string | null }
   },
   async (input): Promise<GenerateCodeOutput> => {
-    console.log("[generateCodeFlow] Starting code generation. User prompt:", input.prompt);
-
-    const MAX_ITERATIONS = 5; // Max 5 attempts to enhance
-    const MIN_TARGET_LINES = 3000; // Target 3000 lines
-    let currentCode: string | null = null;
-    let iteration = 0;
-    let lastSuccessfulCode: string | null = null; // Keep track of the last valid code
+    console.log("[generateCodeFlow] Starting code generation (single attempt). User prompt:", input.prompt);
+    let generatedHtml: string | null = null;
 
     try {
-      // Initial Code Generation
-      console.log("[generateCodeFlow] Attempting initial code generation.");
-      const initialResult = await generateCodePrompt(input);
-      currentCode = initialResult?.output?.code ?? null;
+      const result = await generateCodePrompt(input); // Returns string | null
+      generatedHtml = result ?? null;
       
-      if (currentCode === null || currentCode === undefined) {
-        console.error("[generateCodeFlow] CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_UNDEFINED_ON_INITIAL_GENERATION.");
-        return { code: "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_UNDEFINED_ON_INITIAL_GENERATION. Please check API key and model availability. -->" };
-      }
-      if (currentCode.startsWith("<!-- Error") || currentCode.startsWith("<!-- CRITICAL_ERROR") || currentCode.trim() === "") {
-         console.warn("[generateCodeFlow] Initial generation resulted in an error comment or empty code:", currentCode);
-         return { code: currentCode || "<!-- CRITICAL_ERROR: Initial generation was empty. -->" };
-      }
-      console.log(`[generateCodeFlow] Initial generation: ${countLines(currentCode)} lines. Code length: ${currentCode.length}`);
-      lastSuccessfulCode = currentCode;
-
-      // Iterative Enhancement Loop
-      while (countLines(currentCode) < MIN_TARGET_LINES && iteration < MAX_ITERATIONS) {
-        iteration++;
-        console.log(`[generateCodeFlow] Iteration ${iteration}: Code is ${countLines(currentCode)} lines. Attempting enhancement (target: ${MIN_TARGET_LINES} lines).`);
-
-        const enhanceInput: EnhanceCodeInput = {
-          originalPrompt: input.prompt,
-          existingCode: currentCode, // Pass the current code for enhancement
-        };
-
-        const enhancementResult = await enhanceCodePrompt(enhanceInput);
-        const enhancedCode = enhancementResult?.output?.code ?? null;
-
-        if (enhancedCode === null || enhancedCode === undefined) {
-          console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} returned null or undefined code. Using code from previous successful step: ${countLines(lastSuccessfulCode)} lines.`);
-          currentCode = lastSuccessfulCode; // Revert to last known good code
-          break; 
-        }
-        
-        if (enhancedCode.startsWith("<!-- Error") || enhancedCode.startsWith("<!-- CRITICAL_ERROR") || enhancedCode.trim() === "") {
-            console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} resulted in an error comment or empty code:`, enhancedCode);
-            // If enhancement fails with an error, it's better to return the last successful code
-            // instead of the error comment from enhancement, unless the error is critical.
-            if (enhancedCode.startsWith("<!-- CRITICAL_ERROR")) {
-                currentCode = enhancedCode;
-            } else {
-                 console.warn(`[generateCodeFlow] Enhancement failed with a non-critical error. Reverting to last successful code: ${countLines(lastSuccessfulCode)} lines.`);
-                 currentCode = lastSuccessfulCode;
-            }
-            break; 
-        }
-        
-        // Only update if the new code is genuinely longer and seems valid
-        if (countLines(enhancedCode) > countLines(currentCode)) {
-            console.log(`[generateCodeFlow] Iteration ${iteration} successfully enhanced code to ${countLines(enhancedCode)} lines.`);
-            currentCode = enhancedCode;
-            lastSuccessfulCode = currentCode; // Update last successful code
-        } else {
-            console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} did not increase line count (${countLines(enhancedCode)} vs ${countLines(currentCode)}). Keeping previous version.`);
-            // No need to break, currentCode remains the longer version.
-        }
-        console.log(`[generateCodeFlow] Iteration ${iteration} result: ${countLines(currentCode)} lines. Code length: ${currentCode.length}`);
+      if (generatedHtml === null) {
+        console.error("[generateCodeFlow] CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_ON_GENERATION. This means the model provided no content at all.");
+        return { code: "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_ON_GENERATION. Please check API key, model availability, or prompt complexity. -->" };
       }
 
-      if (iteration === MAX_ITERATIONS && countLines(currentCode) < MIN_TARGET_LINES) {
-        console.warn(`[generateCodeFlow] Max iterations (${MAX_ITERATIONS}) reached, but code is still ${countLines(currentCode)} lines (target: ${MIN_TARGET_LINES}). Returning the best version achieved.`);
+      if (generatedHtml.trim() === "") {
+        console.warn("[generateCodeFlow] AI returned an empty string. Treating as an error.");
+        return { code: "<!-- WARNING: AI_MODEL_RETURNED_EMPTY_STRING. -->" };
       }
       
-      if (currentCode === null || currentCode === undefined) {
-         console.error("[generateCodeFlow] CRITICAL_ERROR: Code became null or undefined during processing. This should not happen.");
-        return { code: "<!-- CRITICAL_ERROR: Code became null or undefined during processing. Please report this bug. -->" };
+      // Check if it's an error comment from the model itself
+      if (generatedHtml.startsWith("<!-- Error:") || generatedHtml.startsWith("<!-- CRITICAL_ERROR:") || generatedHtml.startsWith("<!-- WARNING:")) {
+         console.warn("[generateCodeFlow] AI returned an error/warning comment:", generatedHtml);
+         return { code: generatedHtml };
       }
-       if (!currentCode.toLowerCase().startsWith('<!doctype html>') || !currentCode.toLowerCase().endsWith('</html>')) {
-           if (!currentCode.startsWith("<!-- Error") && !currentCode.startsWith("<!-- CRITICAL_ERROR")) {
-             console.warn("[generateCodeFlow] Final generated code might be incomplete or not valid HTML. Length:", currentCode.length, "Starts with:", currentCode.substring(0,20), "Ends with:", currentCode.substring(currentCode.length-20));
-             // Optionally, wrap in comments if it's not an error comment itself.
-             // currentCode = `<!-- WARNING: Final code might be malformed. Original content preserved. -->\n${currentCode}`;
-           }
-       }
 
-      console.log(`[generateCodeFlow] Final code output: ${countLines(currentCode)} lines. Code length: ${currentCode.length}`);
-      return { code: currentCode };
+      // Basic validation for HTML structure (can be improved)
+      if (!generatedHtml.toLowerCase().startsWith('<!doctype html>') || !generatedHtml.toLowerCase().endsWith('</html>')) {
+        console.warn("[generateCodeFlow] Final generated code might be incomplete or not valid HTML. Length:", generatedHtml.length, "Starts with:", generatedHtml.substring(0,20), "Ends with:", generatedHtml.substring(generatedHtml.length-20));
+        // Optionally, wrap in comments if it's not an error comment itself.
+        // return { code: `<!-- WARNING: Final code might be malformed. Original content preserved. -->\n${generatedHtml}` };
+      }
+      
+      console.log(`[generateCodeFlow] Single attempt generation successful. Code length: ${generatedHtml.length}, Lines: ${generatedHtml.split('\n').length}`);
+      return { code: generatedHtml };
 
     } catch (error: any) {
       let errorMessage = "Unknown error occurred during code generation flow's main try-catch.";
       if (error instanceof Error) {
         errorMessage = error.message;
+        if (error.stack) {
+            console.error("[generateCodeFlow] Error stack:", error.stack);
+        }
       } else if (typeof error === 'string') {
         errorMessage = error;
       } else {
@@ -350,8 +260,10 @@ const generateCodeFlow = ai.defineFlow(
           errorMessage = JSON.stringify(error);
         } catch (e) { /* ignore stringify error */ }
       }
-      console.error("[generateCodeFlow] Critical error in flow's main try-catch:", errorMessage, error.stack);
+      console.error("[generateCodeFlow] Critical error in flow's main try-catch:", errorMessage);
       return { code: `<!-- ERROR_DURING_CODE_GENERATION_FLOW_MAIN_CATCH: ${errorMessage.replace(/-->/g, '--&gt;')} -->` };
     }
   }
 );
+
+    
