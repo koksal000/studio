@@ -145,9 +145,19 @@ export type EnhanceCodeInput = z.infer<typeof EnhanceCodeInputSchema>;
 export async function generateCode(input: GenerateCodeInput): Promise<GenerateCodeOutput> {
   try {
     return await generateCodeFlow(input);
-  } catch (error) {
-    console.error("[generateCode export] Critical error in generateCode flow:", error);
-    return { code: `<!-- Error generating code: ${error instanceof Error ? error.message : String(error)} -->` };
+  } catch (error: any) {
+    console.error("[generateCode export] Critical error in generateCode flow export:", error);
+    let errorMessage = "Unknown error in generateCode export.";
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else {
+      try {
+        errorMessage = JSON.stringify(error);
+      } catch (e) { /* ignore */ }
+    }
+    return { code: `<!-- Error in generateCode export: ${errorMessage.replace(/-->/g, '--&gt;')} -->` };
   }
 }
 
@@ -169,9 +179,9 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES WITHIN THE "code" VALUE, OTHER THAN THE HTML ITSELF.**
     The very first character of the "code" value must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
 
-    If, for any reason (such as safety constraints or an overly complex/impossible request that you cannot fulfill), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: The request is too complex to fulfill. -->\` or \`<!-- Error: Content generation blocked by safety. -->\`).
-    Do NOT return an empty string or null for the "code" value if you are providing an explanatory comment.
-    Otherwise, if you *can* fulfill the request, provide ONLY the complete HTML code within the "code" value of the JSON object.
+    If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: The request is too complex to fulfill. -->\` or \`<!-- Error: Content generation blocked by safety. -->\`).
+    Do NOT return an empty string for the "code" value if you are providing an explanatory comment.
+    If the model generates NULL or EMPTY content for the "code" field, it will be treated as an error.
 
 2.  **CRITICAL: Adhere to the 100 Rules:** You MUST ABSOLUTELY follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
     ${HUNDRED_RULES}
@@ -195,7 +205,7 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
 User Prompt:
 {{{prompt}}}
 
-Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING HTML, OR HTML COMMENT):`,
+Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING HTML, OR HTML COMMENT EXPLAINING FAILURE. "code" CANNOT BE NULL OR EMPTY):`,
 });
 
 const enhanceCodePrompt = ai.definePrompt({
@@ -224,11 +234,11 @@ Your task is to:
     Implement extensively: Transitions, Advanced Interfaces, Shadows & Lighting, Panels & Modals, Effective Animations, Gradients & Colors, Excellent Graphics.
 4.  **INCREASE SCOPE & LINE COUNT:** The goal is to produce a significantly larger and more complete application or website section, aiming for well over 1000 lines of high-quality code.
 5.  **Output Format (STRICT):** Your response MUST be a JSON object with a single key "code". The value of "code" MUST be the ENTIRE, NEW, ENHANCED, and COMPLETE HTML file. Do NOT return only the changes or a diff. The HTML code MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`. No explanatory text outside the "code" value.
-    If you cannot fulfill the enhancement or it results in an error, the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: Cannot enhance further due to complexity. -->\`).
+    If you cannot fulfill the enhancement or it results in an error, the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: Cannot enhance further due to complexity. -->\`). "code" CANNOT BE NULL OR EMPTY.
 
 Focus on making the application significantly more robust, feature-complete, and visually stunning than the "Existing HTML Code".
 
-Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING THE FULLY ENHANCED HTML, OR HTML COMMENT):`,
+Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING THE FULLY ENHANCED HTML, OR HTML COMMENT. "code" CANNOT BE NULL OR EMPTY):`,
 });
 
 
@@ -241,7 +251,7 @@ const generateCodeFlow = ai.defineFlow(
   async (input): Promise<GenerateCodeOutput> => {
     console.log("[generateCodeFlow] Starting code generation. User prompt:", input.prompt);
 
-    const MAX_ITERATIONS = 5; // Max enhancement attempts, updated to 5
+    const MAX_ITERATIONS = 5;
     const MIN_TARGET_LINES = 1000;
     let currentCode: string | null = null;
     let iteration = 0;
@@ -252,13 +262,13 @@ const generateCodeFlow = ai.defineFlow(
       const initialResult = await generateCodePrompt(input);
       currentCode = initialResult?.output?.code ?? null;
       
-      if (!currentCode) {
-        console.error("[generateCodeFlow] Initial generation returned null code.");
-        return { code: "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_ON_INITIAL_GENERATION. -->" };
+      if (currentCode === null || currentCode === undefined) {
+        console.error("[generateCodeFlow] Initial generation returned null or undefined code.");
+        return { code: "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_UNDEFINED_ON_INITIAL_GENERATION. -->" };
       }
-      if (currentCode.startsWith("<!-- Error") || currentCode.startsWith("<!-- CRITICAL_ERROR")) {
-         console.warn("[generateCodeFlow] Initial generation resulted in an error comment:", currentCode);
-         return { code: currentCode };
+      if (currentCode.startsWith("<!-- Error") || currentCode.startsWith("<!-- CRITICAL_ERROR") || currentCode.trim() === "") {
+         console.warn("[generateCodeFlow] Initial generation resulted in an error comment or empty code:", currentCode);
+         return { code: currentCode || "<!-- CRITICAL_ERROR: Initial generation was empty. -->" };
       }
       console.log(`[generateCodeFlow] Initial generation: ${countLines(currentCode)} lines. Code length: ${currentCode.length}`);
 
@@ -275,25 +285,21 @@ const generateCodeFlow = ai.defineFlow(
         const enhancementResult = await enhanceCodePrompt(enhanceInput);
         const enhancedCode = enhancementResult?.output?.code ?? null;
 
-        if (!enhancedCode) {
-          console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} returned null code. Using code from previous step.`);
-          // No new code, stop iterating
-          break;
+        if (enhancedCode === null || enhancedCode === undefined) {
+          console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} returned null or undefined code. Using code from previous step.`);
+          break; 
         }
         
-        if (enhancedCode.startsWith("<!-- Error") || enhancedCode.startsWith("<!-- CRITICAL_ERROR")) {
-            console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} resulted in an error comment:`, enhancedCode);
-            // If enhancement returns an error, we might want to return the error or the last good code.
-            // For now, let's return the error comment from enhancement.
-            currentCode = enhancedCode;
+        if (enhancedCode.startsWith("<!-- Error") || enhancedCode.startsWith("<!-- CRITICAL_ERROR") || enhancedCode.trim() === "") {
+            console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} resulted in an error comment or empty code:`, enhancedCode);
+            currentCode = enhancedCode || `<!-- CRITICAL_ERROR: Enhancement iteration ${iteration} was empty. -->`;
             break; 
         }
         
-        // If enhancement provides shorter code for some reason, or same, stick with previous if it was better.
-        // This check might be too simplistic, but aims to avoid regression in length.
         if (countLines(enhancedCode) < countLines(currentCode) && countLines(currentCode) > 0) {
             console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} produced shorter code (${countLines(enhancedCode)} lines vs ${countLines(currentCode)}). Keeping previous version.`);
-            break;
+            // Optionally, we could break here if we don't want to risk regression.
+            // For now, we'll proceed with the (potentially shorter) enhanced code if it's not an error.
         }
 
         currentCode = enhancedCode;
@@ -304,31 +310,30 @@ const generateCodeFlow = ai.defineFlow(
         console.warn(`[generateCodeFlow] Max iterations reached, but code is still ${countLines(currentCode)} lines (target: ${MIN_TARGET_LINES}).`);
       }
       
-      if (!currentCode) {
-        // This case should ideally be caught earlier
-        return { code: "<!-- CRITICAL_ERROR: Code became null during processing. -->" };
+      if (currentCode === null || currentCode === undefined) {
+        return { code: "<!-- CRITICAL_ERROR: Code became null or undefined during processing. -->" };
       }
-      // Basic check for HTML completeness
        if (!currentCode.toLowerCase().startsWith('<!doctype html>') || !currentCode.toLowerCase().endsWith('</html>')) {
-           if (!currentCode.startsWith("<!-- Error") && !currentCode.startsWith("<!-- CRITICAL_ERROR")) { // Don't warn if it's an error comment
+           if (!currentCode.startsWith("<!-- Error") && !currentCode.startsWith("<!-- CRITICAL_ERROR")) {
              console.warn("[generateCodeFlow] Final generated code might be incomplete or not valid HTML. Length:", currentCode.length);
            }
        }
 
       return { code: currentCode };
 
-    } catch (error) {
-      console.error("[generateCodeFlow] Error during iterative code generation process:", error);
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("Candidate was blocked due to")) {
-        return { code: `<!-- Error: Content generation blocked by safety settings. Details: ${message} -->` };
+    } catch (error: any) {
+      let errorMessage = "Unknown error occurred during code generation flow.";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else {
+        try {
+          errorMessage = JSON.stringify(error);
+        } catch (e) { /* ignore stringify error */ }
       }
-      if (message.toLowerCase().includes("schema validation failed")) {
-        return { code: `<!-- ERROR_GENKIT_SCHEMA_VALIDATION: The AI model's response did not match the expected JSON format. Details: ${message} -->` };
-      }
-      return { code: `<!-- ERROR_DURING_CODE_GENERATION_FLOW: ${message} -->` };
+      console.error("[generateCodeFlow] Critical error in flow's main try-catch:", errorMessage, error);
+      return { code: `<!-- ERROR_DURING_CODE_GENERATION_FLOW_MAIN_CATCH: ${errorMessage.replace(/-->/g, '--&gt;')} -->` };
     }
   }
 );
-
-    

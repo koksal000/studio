@@ -18,18 +18,27 @@ const RefactorCodeInputSchema = z.object({
 });
 export type RefactorCodeInput = z.infer<typeof RefactorCodeInputSchema>;
 
-// Reverted to object schema
 const RefactorCodeOutputSchema = z.object({
-  code: z.string().describe('The comprehensively refactored code. Must be a complete HTML document ending with </html>, or an HTML comment if explaining failure.'),
+  code: z.string().nullable().describe('The comprehensively refactored code. Must be a complete HTML document ending with </html>, or an HTML comment if explaining failure, or null if generation fails.'),
 });
 export type RefactorCodeOutput = z.infer<typeof RefactorCodeOutputSchema>;
 
 export async function refactorCode(input: RefactorCodeInput): Promise<RefactorCodeOutput> {
   try {
     return await refactorCodeFlow(input);
-  } catch (error) {
-    console.error("[refactorCode export] Critical error in refactorCode flow:", error);
-    return { code: `<!-- Error refactoring code: ${error instanceof Error ? error.message : String(error)} -->\n${input.code}` };
+  } catch (error: any) {
+    console.error("[refactorCode export] Critical error in refactorCode flow export:", error);
+    let errorMessage = "Unknown error in refactorCode export.";
+     if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else {
+      try {
+        errorMessage = JSON.stringify(error);
+      } catch (e) { /* ignore */ }
+    }
+    return { code: `<!-- Error refactoring code (export level): ${errorMessage.replace(/-->/g, '--&gt;')} -->\n${input.code}` };
   }
 }
 
@@ -39,7 +48,7 @@ const refactorCodePrompt = ai.definePrompt({
     schema: RefactorCodeInputSchema,
   },
   output: {
-    schema: RefactorCodeOutputSchema, // Expecting object
+    schema: RefactorCodeOutputSchema, 
   },
   prompt: `You are an expert code refactoring agent.
 
@@ -50,9 +59,8 @@ You will be given code and a prompt describing how to refactor the code. Apply t
     The HTML code value MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`.
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES WITHIN THE "code" VALUE, OTHER THAN THE HTML ITSELF.**
 
-    If, for any reason (such as safety constraints or an overly complex/impossible request that you cannot fulfill), you CANNOT generate the refactored HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: Cannot refactor due to X, Y, Z. -->\` or \`<!-- Error: Content refactoring blocked by safety. -->\`).
-    Do NOT return an empty string or null for the "code" value if you are providing an explanatory comment.
-    Otherwise, if you *can* fulfill the request, provide ONLY the complete refactored HTML code within the "code" value of the JSON object.
+    If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL), you CANNOT generate the refactored HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: Cannot refactor due to X, Y, Z. -->\` or \`<!-- Error: Content refactoring blocked by safety. -->\`).
+    Do NOT return an empty string for the "code" value if you are providing an explanatory comment. "code" CANNOT BE NULL OR EMPTY unless it's a genuine failure to generate any valid content.
 
 2.  **Completeness:** Ensure the output is the *entire*, refactored code for the "code" value.
 
@@ -64,8 +72,7 @@ Original Code:
 Refactoring Prompt:
 {{{prompt}}}
 
-Refactored Code (JSON OBJECT WITH "code" KEY CONTAINING COMPLETE HTML ONLY, OR HTML COMMENT):`,
-  // Removed safety settings config
+Refactored Code (JSON OBJECT WITH "code" KEY CONTAINING COMPLETE HTML ONLY, OR HTML COMMENT. "code" CANNOT BE NULL OR EMPTY):`,
 });
 
 const refactorCodeFlow = ai.defineFlow(
@@ -79,23 +86,34 @@ const refactorCodeFlow = ai.defineFlow(
     try {
       const {output} = await refactorCodePrompt(input);
 
-      if (!output || !output.code) {
-        console.error("[refactorCodeFlow] Model response output or output.code is NULL or empty for refactor.");
-        return { code: `<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_EMPTY_CODE_FOR_REFACTOR. -->\n${input.code}` };
+      if (!output || output.code === undefined || output.code === null) {
+        console.error("[refactorCodeFlow] Model response output or output.code is NULL or undefined for refactor.");
+        return { code: `<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_UNDEFINED_CODE_FOR_REFACTOR. -->\n${input.code}` };
       }
+       if (output.code.trim() === "" || output.code.startsWith("<!-- Error") || output.code.startsWith("<!-- CRITICAL_ERROR")) {
+         console.warn("[refactorCodeFlow] Refactor resulted in an error comment or empty code:", output.code);
+         // Return the error comment or a new one if it was empty
+         return { code: output.code || "<!-- CRITICAL_ERROR: Refactor resulted in empty code. -->" };
+       }
       console.log("[refactorCodeFlow] Received refactored code from AI (length):", output.code.length);
       return output;
 
-    } catch (initialError) {
-      console.error("[refactorCodeFlow] Top-level error during initial code refactoring (or schema validation):", initialError);
-      const message = initialError instanceof Error ? initialError.message : String(initialError);
-      if (message.includes("Candidate was blocked due to")) {
-        return { code: `<!-- Error: Content refactoring blocked by safety settings. Details: ${message} -->\n${input.code}` };
+    } catch (error: any) {
+      let errorMessage = "Unknown error occurred during refactor code flow.";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else {
+        try {
+          errorMessage = JSON.stringify(error);
+        } catch (e) { /* ignore stringify error */ }
       }
-       if (message.toLowerCase().includes("schema validation failed")) {
-           return { code: `<!-- ERROR_GENKIT_SCHEMA_VALIDATION_REFACTOR: Model response mismatch. Details: ${message} -->\n${input.code}` };
+      console.error("[refactorCodeFlow] Critical error in flow's main try-catch:", errorMessage, error);
+      if (errorMessage.includes("Candidate was blocked due to")) {
+         return { code: `<!-- Error: Content refactoring blocked by safety settings. Details: ${errorMessage.replace(/-->/g, '--&gt;')} -->\n${input.code}` };
       }
-      return { code: `<!-- ERROR_DURING_INITIAL_REFACTOR_TRY_CATCH: ${message} -->\n${input.code}` };
+      return { code: `<!-- ERROR_DURING_REFACTOR_CODE_FLOW_MAIN_CATCH: ${errorMessage.replace(/-->/g, '--&gt;')} -->\n${input.code}` };
     }
   }
 );
