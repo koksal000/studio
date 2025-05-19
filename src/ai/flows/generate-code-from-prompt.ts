@@ -241,7 +241,7 @@ const generateCodeFlow = ai.defineFlow(
   async (input): Promise<GenerateCodeOutput> => {
     console.log("[generateCodeFlow] Starting code generation. User prompt:", input.prompt);
 
-    const MAX_ITERATIONS = 3; // Max enhancement attempts
+    const MAX_ITERATIONS = 5; // Max enhancement attempts, updated to 5
     const MIN_TARGET_LINES = 1000;
     let currentCode: string | null = null;
     let iteration = 0;
