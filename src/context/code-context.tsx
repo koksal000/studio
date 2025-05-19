@@ -41,7 +41,7 @@ const CodeContext = createContext<CodeContextType | undefined>(undefined);
 
 export const CodeProvider = ({ children }: { children: ReactNode }) => {
   const [prompt, setPrompt] = useState<string>('');
-  const [generatedCode, setGeneratedCode] = useState<string | null>(null); // Initialize to null
+  const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [previousGeneratedCode, setPreviousGeneratedCode] = useState<string | null>(null);
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -54,50 +54,57 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   const [isRefactoring, setIsRefactoring] = useState<boolean>(false);
   const [refactorError, setRefactorError] = useState<string | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
-
-  // Renamed to avoid conflict and make clear it's internal
-  const updatePreviewFromCode = useCallback((currentCode: string | null) => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null); // Clear previous URL
-    }
-
-    const files = parseGeneratedCode(currentCode);
-    if (files.length === 0 || !files[0].content) {
-      setPreviewUrl(null);
-      return;
-    }
-
-    const htmlFile = files[0];
-    try {
-      const blob = new Blob([htmlFile.content], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      setPreviewUrl(url);
-    } catch (e) {
-      console.error("Error creating blob for preview:", e);
-      setPreviewUrl(null);
-      setError("Could not create preview from the generated content.");
-    }
-  }, [previewUrl]); // Removed setPreviewUrl from dependencies as it causes loops
-
-  useEffect(() => {
-     updatePreviewFromCode(generatedCode);
-  }, [generatedCode, updatePreviewFromCode]);
-
-
-  const parseGeneratedCode = (code: string | null): GeneratedFile[] => {
+  const parseGeneratedCode = useCallback((code: string | null): GeneratedFile[] => {
     if (!code || typeof code !== 'string' || code.trim() === '') {
       return [];
     }
     return [{ fileName: 'index.html', content: code.trim() }];
-  };
+  }, []);
+
+  // Effect to update preview and generatedFiles when generatedCode changes
+  useEffect(() => {
+    // This function will be called when generatedCode changes.
+    // It's responsible for revoking the old URL, parsing code, and setting the new URL.
+    setPreviewUrl(currentOldUrl => {
+      if (currentOldUrl) {
+        URL.revokeObjectURL(currentOldUrl);
+      }
+
+      if (!generatedCode) {
+        setGeneratedFiles([]);
+        return null;
+      }
+
+      const files = parseGeneratedCode(generatedCode);
+      setGeneratedFiles(files);
+
+      if (files.length === 0 || !files[0].content) {
+        return null;
+      }
+
+      const htmlFile = files[0];
+      try {
+        const blob = new Blob([htmlFile.content], { type: 'text/html' });
+        return URL.createObjectURL(blob);
+      } catch (e) {
+        console.error("Error creating blob for preview (useEffect generatedCode):", e);
+        setError("Could not create preview from the generated content.");
+        return null;
+      }
+    });
+  }, [generatedCode, parseGeneratedCode, setError]);
+
+  // Effect for unmount cleanup of the last previewUrl
+  useEffect(() => {
+    // Capture the previewUrl at the time the effect runs.
+    // The cleanup function will then use this captured value.
+    const urlToCleanOnUnmount = previewUrl;
+    return () => {
+      if (urlToCleanOnUnmount) {
+        URL.revokeObjectURL(urlToCleanOnUnmount);
+      }
+    };
+  }, [previewUrl]); // This effect re-subscribes if previewUrl changes.
 
   const handleGenerateCode = async () => {
     if (!prompt) {
@@ -106,39 +113,28 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     }
     setIsLoading(true);
     setError(null);
-    setGeneratedCode(null); // Set to null initially
+    setGeneratedCode(null); // This will trigger the useEffect to clear/revoke preview
     setPreviousGeneratedCode(null);
-    setGeneratedFiles([]);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
+    // generatedFiles and previewUrl are handled by the useEffect listening to generatedCode
 
     try {
-      const resultCode: GenerateCodeOutput = await generateCode({ prompt }); // generateCode now returns Promise<string | null>
-      
+      const resultCode: GenerateCodeOutput = await generateCode({ prompt });
       if (resultCode !== null) {
-        setGeneratedCode(resultCode);
-        setGeneratedFiles(parseGeneratedCode(resultCode));
+        setGeneratedCode(resultCode); // Triggers useEffect for preview and files
         if (resultCode.trim() === '' || resultCode.startsWith('<!-- Error:') || resultCode.startsWith('<!-- Warning:')) {
-             // If AI returned an empty string or a known error/warning comment, show it in the error display
              setError(resultCode.trim() === '' ? 'AI returned empty content.' : resultCode);
         }
       } else {
-        // Model explicitly returned null from the flow
         const nullErrorMsg = 'AI failed to generate content (returned null). Please try again or check the model.';
         setError(nullErrorMsg);
-        setGeneratedCode('<!-- Error: AI returned null -->');
-        setGeneratedFiles(parseGeneratedCode('<!-- Error: AI returned null -->'));
+        setGeneratedCode('<!-- Error: AI returned null -->'); // Triggers useEffect
       }
-    } catch (err) { // This catch is for unexpected errors in the generateCode call itself or context logic
+    } catch (err) {
       console.error('Error in handleGenerateCode:', err);
       const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
       setError(errorMessage);
       const errorHtml = `<!-- Context Error: ${errorMessage} -->`;
-      setGeneratedCode(errorHtml);
-      setPreviousGeneratedCode(null);
-      setGeneratedFiles(parseGeneratedCode(errorHtml));
+      setGeneratedCode(errorHtml); // Triggers useEffect
     } finally {
       setIsLoading(false);
     }
@@ -149,7 +145,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setRefactorError('Please enter refactoring instructions.');
       return;
     }
-    if (!generatedCode) { // Check if generatedCode is null or empty
+    if (!generatedCode) {
       setRefactorError('No code available to refactor.');
       return;
     }
@@ -160,7 +156,6 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       const resultRefactoredCode: RefactorCodeOutput = await refactorCode({ code: generatedCode, prompt: refactorPrompt });
-      
       if (resultRefactoredCode !== null) {
         setRefactoredCode(resultRefactoredCode);
          if (resultRefactoredCode.trim() === '' || resultRefactoredCode.startsWith('<!-- Error:') || resultRefactoredCode.startsWith('<!-- Warning:')) {
@@ -184,13 +179,12 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   const applyRefactor = () => {
     if (refactoredCode !== null && typeof refactoredCode === 'string' && !refactoredCode.startsWith('<!-- Error:')) {
       setPreviousGeneratedCode(generatedCode);
-      setGeneratedCode(refactoredCode);
-      // generatedFiles will be updated by the useEffect on generatedCode
+      setGeneratedCode(refactoredCode); // Triggers useEffect for preview and files
       setRefactoredCode(null);
       setRefactorPrompt('');
       setIsRefactorModalOpen(false);
-      setError(null); // Clear general error if refactor is successful
-      setRefactorError(null); // Clear refactor specific error
+      setError(null);
+      setRefactorError(null);
     } else {
       setRefactorError(refactoredCode === null ? "Cannot apply changes: No refactored code available." : "Cannot apply changes: Refactored code contains errors or is empty.");
     }
@@ -198,10 +192,9 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
   const undoRefactor = () => {
     if (previousGeneratedCode !== null) {
-      setGeneratedCode(previousGeneratedCode);
-      // generatedFiles will be updated by the useEffect on generatedCode
+      setGeneratedCode(previousGeneratedCode); // Triggers useEffect for preview and files
       setPreviousGeneratedCode(null);
-      setError(null); // Clear general error
+      setError(null);
     }
   };
 
@@ -218,7 +211,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
+      URL.revokeObjectURL(link.href); // Clean up the object URL
     } catch (err) {
       console.error('Error creating download link:', err);
       setError('Failed to prepare file for download.');
@@ -226,8 +219,32 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePreview = useCallback(() => {
-     updatePreviewFromCode(generatedCode);
-   }, [generatedCode, updatePreviewFromCode]);
+    // This function is for manual refresh. It re-processes the current generatedCode.
+    setPreviewUrl(currentOldUrl => {
+      if (currentOldUrl) {
+        URL.revokeObjectURL(currentOldUrl);
+      }
+      if (!generatedCode) {
+        // setGeneratedFiles([]); // This is handled by the main useEffect
+        return null;
+      }
+      // We don't need to call setGeneratedFiles here again, as the main useEffect handles it.
+      // Re-parsing is okay if parseGeneratedCode is cheap.
+      const files = parseGeneratedCode(generatedCode);
+      if (files.length === 0 || !files[0].content) {
+        return null;
+      }
+      const htmlFile = files[0];
+      try {
+        const blob = new Blob([htmlFile.content], { type: 'text/html' });
+        return URL.createObjectURL(blob);
+      } catch (e) {
+        console.error("Error creating blob for preview (updatePreview):", e);
+        setError("Could not create preview from the generated content.");
+        return null;
+      }
+    });
+  }, [generatedCode, parseGeneratedCode, setError]);
 
   return (
     <CodeContext.Provider
