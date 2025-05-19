@@ -163,7 +163,7 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
     **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
     The very first character of your entire response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
-    IF YOU CANNOT FULFILL THE REQUEST, return null.
+    IF YOU CANNOT FULFILL THE REQUEST (e.g. due to safety constraints or an impossible request), return null.
 
 2.  **Adhere to the 100 Rules:** You MUST follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
     ${HUNDRED_RULES}
@@ -179,7 +179,7 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
 5.  **Website-Level Complexity:** The final output should resemble a complete section of a modern website or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel.
 6.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required.
 7.  **No External Dependencies:** Do not include links to external libraries or frameworks unless explicitly requested and absolutely essential for the core functionality described (even then, prefer vanilla solutions if feasible). If a library like Tailwind is requested, embed the necessary CDN link or provide instructions, but default to inline/embedded styles.
-8.  **Completeness:** Ensure the generated HTML code is complete and not truncated. Output the *entire* file content, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`. Partial or incomplete code is unacceptable. IF THE CODE IS TRUNCATED, return null rather than incomplete code.
+8.  **Completeness:** Ensure the generated HTML code is as complete as possible. Output the *entire* file content, starting with \`<!DOCTYPE html>\`. If the full content cannot be generated in one response, provide as much as possible. The system will attempt to complete it.
 
 User Prompt:
 {{{prompt}}}

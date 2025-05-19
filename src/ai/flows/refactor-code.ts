@@ -62,8 +62,8 @@ You will be given code and a prompt describing how to refactor the code. Apply t
     **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
     The very first character of your entire response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
-    IF YOU CANNOT FULFILL THE REQUEST, return null.
-2.  **Completeness:** Ensure the output is the *entire*, complete, and un-truncated refactored code. Partial output is not acceptable. IF THE CODE IS TRUNCATED, return null.
+    IF YOU CANNOT FULFILL THE REQUEST (e.g. due to safety constraints or an impossible request), return null.
+2.  **Completeness:** Ensure the output is the *entire*, refactored code. If the full content cannot be generated in one response, provide as much as possible. The system will attempt to complete it.
 
 Original Code:
 \`\`\`html
