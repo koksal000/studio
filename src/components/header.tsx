@@ -46,25 +46,23 @@ export function Header() {
         </Button>
         <Button
           variant="outline"
-          size="sm"
+          size="icon"
           onClick={undoRefactor}
           disabled={anyLoading || !canUndo}
           title="Geri Al"
           className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
         >
-          <Undo className="mr-2 h-4 w-4" />
-          Geri Al
+          <Undo className="h-4 w-4" />
         </Button>
         <Button
           variant="outline"
-          size="sm"
+          size="icon"
           onClick={redoChange}
           disabled={anyLoading || !canRedo}
           title="İleri Al"
           className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
         >
-          <Redo className="mr-2 h-4 w-4" />
-          İleri Al
+          <Redo className="h-4 w-4" />
         </Button>
       </div>
     </header>
