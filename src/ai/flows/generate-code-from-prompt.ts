@@ -3,6 +3,7 @@
 
 /**
  * @fileOverview A code generation AI agent based on a prompt.
+ * Implements iterative enhancement if the initial code is less than 1000 lines.
  *
  * - generateCode - A function that handles the code generation process.
  * - GenerateCodeInput - The input type for the generateCode function.
@@ -11,6 +12,12 @@
 
 import {ai} from '@/ai/ai-instance';
 import {z} from 'genkit';
+
+// Helper function to count lines
+const countLines = (str: string | null | undefined): number => {
+  if (!str) return 0;
+  return str.split('\n').length;
+};
 
 // The 100 rules provided by the user (in Turkish)
 const HUNDRED_RULES = `
@@ -122,9 +129,18 @@ const GenerateCodeInputSchema = z.object({
 export type GenerateCodeInput = z.infer<typeof GenerateCodeInputSchema>;
 
 const GenerateCodeOutputSchema = z.object({
-  code: z.string().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>, or an HTML comment if explaining failure.'),
+  code: z.string().nullable().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>, or null/HTML comment if explaining failure.'),
 });
 export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>;
+
+
+// Schema for the enhancement prompt
+const EnhanceCodeInputSchema = z.object({
+  originalPrompt: z.string().describe("The user's original high-level prompt."),
+  existingCode: z.string().describe("The HTML code generated so far that needs enhancement and debugging."),
+});
+export type EnhanceCodeInput = z.infer<typeof EnhanceCodeInputSchema>;
+
 
 export async function generateCode(input: GenerateCodeInput): Promise<GenerateCodeOutput> {
   try {
@@ -182,6 +198,40 @@ User Prompt:
 Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING HTML, OR HTML COMMENT):`,
 });
 
+const enhanceCodePrompt = ai.definePrompt({
+  name: 'enhanceCodePrompt',
+  input: {
+    schema: EnhanceCodeInputSchema,
+  },
+  output: {
+    schema: GenerateCodeOutputSchema, // Same output schema
+  },
+  prompt: `You are an expert web developer. You previously generated HTML code based on an original user prompt. The existing code needs to be significantly ENHANCED, EXPANDED, and DEBUGGED to be more comprehensive, feature-rich, and ideally exceed 1000 lines, strictly following the 100 rules and advanced UI/UX guidelines.
+
+Original User Prompt (for context):
+{{{originalPrompt}}}
+
+Existing HTML Code to Enhance:
+\`\`\`html
+{{{existingCode}}}
+\`\`\`
+
+Your task is to:
+1.  **EXPAND SIGNIFICANTLY & ENHANCE:** Add **NEW** features, UI elements (panels, modals, interactive components), more content sections, and deeper functionality. Think broadly about what else could be part of this application section based on the original prompt and the existing code. Don't just make small tweaks; aim for substantial additions.
+2.  **DEBUG & REFINE:** Carefully review the "Existing HTML Code" for any bugs, logical errors, typos, or areas for improvement. Fix these issues in the new version you generate. Ensure the code is robust and well-structured.
+3.  **CRITICAL: Adhere to the 100 Rules & Advanced UI/UX:** You MUST ABSOLUTELY re-apply and follow these 100 rules and advanced UI/UX guidelines to ensure comprehensive, high-quality, and user-centric output in the NEW code:
+    ${HUNDRED_RULES}
+    Implement extensively: Transitions, Advanced Interfaces, Shadows & Lighting, Panels & Modals, Effective Animations, Gradients & Colors, Excellent Graphics.
+4.  **INCREASE SCOPE & LINE COUNT:** The goal is to produce a significantly larger and more complete application or website section, aiming for well over 1000 lines of high-quality code.
+5.  **Output Format (STRICT):** Your response MUST be a JSON object with a single key "code". The value of "code" MUST be the ENTIRE, NEW, ENHANCED, and COMPLETE HTML file. Do NOT return only the changes or a diff. The HTML code MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`. No explanatory text outside the "code" value.
+    If you cannot fulfill the enhancement or it results in an error, the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: Cannot enhance further due to complexity. -->\`).
+
+Focus on making the application significantly more robust, feature-complete, and visually stunning than the "Existing HTML Code".
+
+Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING THE FULLY ENHANCED HTML, OR HTML COMMENT):`,
+});
+
+
 const generateCodeFlow = ai.defineFlow(
   {
     name: 'generateCodeFlow',
@@ -189,44 +239,96 @@ const generateCodeFlow = ai.defineFlow(
     outputSchema: GenerateCodeOutputSchema,
   },
   async (input): Promise<GenerateCodeOutput> => {
-     console.log("[generateCodeFlow] Attempting code generation. User prompt:", input.prompt);
-     try {
-       const {output} = await generateCodePrompt(input);
-       if (!output || !output.code) {
-         console.error("[generateCodeFlow] Model response output or output.code is NULL or empty.");
-         const errorMessage = "CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_EMPTY_CODE. The AI model provided no content or an invalid structure. Please try a simpler prompt or check your API key and model configuration.";
-         return { code: `<!-- ${errorMessage} -->` };
-       }
-       // Log the length of the received code
-       console.log("[generateCodeFlow] Received code from AI (length):", output.code.length);
+    console.log("[generateCodeFlow] Starting code generation. User prompt:", input.prompt);
 
-       // Check for model-returned errors or empty string
-       if (output.code.trim() === '' || output.code.startsWith('<!-- Error:') || output.code.startsWith('<!-- Warning:') || output.code.startsWith('<!-- CRITICAL_ERROR:')) {
-            console.warn("[generateCodeFlow] Model returned an error/warning or empty code in the 'code' field:", output.code);
-            // Return the error/warning comment as is, as it might contain useful info from the model
-            return { code: output.code };
-       }
+    const MAX_ITERATIONS = 3; // Max enhancement attempts
+    const MIN_TARGET_LINES = 1000;
+    let currentCode: string | null = null;
+    let iteration = 0;
 
-       // Basic check for HTML completeness (can be expanded)
-       if (!output.code.toLowerCase().startsWith('<!doctype html>') || !output.code.toLowerCase().endsWith('</html>')) {
-           console.warn("[generateCodeFlow] Generated code might be incomplete or not valid HTML. Length:", output.code.length);
-           // Optionally, return a specific warning or attempt to fix, though fixing is complex.
-           // For now, return as is but log a warning.
-       }
+    try {
+      // Initial Code Generation
+      console.log("[generateCodeFlow] Attempting initial code generation.");
+      const initialResult = await generateCodePrompt(input);
+      currentCode = initialResult?.output?.code ?? null;
+      
+      if (!currentCode) {
+        console.error("[generateCodeFlow] Initial generation returned null code.");
+        return { code: "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_ON_INITIAL_GENERATION. -->" };
+      }
+      if (currentCode.startsWith("<!-- Error") || currentCode.startsWith("<!-- CRITICAL_ERROR")) {
+         console.warn("[generateCodeFlow] Initial generation resulted in an error comment:", currentCode);
+         return { code: currentCode };
+      }
+      console.log(`[generateCodeFlow] Initial generation: ${countLines(currentCode)} lines. Code length: ${currentCode.length}`);
 
-       return output;
-     } catch (error) {
-        console.error("[generateCodeFlow] Error during call to generateCodePrompt:", error);
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("Candidate was blocked due to")) {
-            return { code: `<!-- Error: Content generation blocked by safety settings. Details: ${message} -->` };
+      // Iterative Enhancement Loop
+      while (countLines(currentCode) < MIN_TARGET_LINES && iteration < MAX_ITERATIONS) {
+        iteration++;
+        console.log(`[generateCodeFlow] Iteration ${iteration}: Code is ${countLines(currentCode)} lines. Attempting enhancement (target: ${MIN_TARGET_LINES} lines).`);
+
+        const enhanceInput: EnhanceCodeInput = {
+          originalPrompt: input.prompt,
+          existingCode: currentCode,
+        };
+
+        const enhancementResult = await enhanceCodePrompt(enhanceInput);
+        const enhancedCode = enhancementResult?.output?.code ?? null;
+
+        if (!enhancedCode) {
+          console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} returned null code. Using code from previous step.`);
+          // No new code, stop iterating
+          break;
         }
-        // Check for schema validation errors more specifically
-        if (message.toLowerCase().includes("schema validation failed")) {
-             return { code: `<!-- ERROR_GENKIT_SCHEMA_VALIDATION: The AI model's response did not match the expected JSON format. Details: ${message} -->` };
+        
+        if (enhancedCode.startsWith("<!-- Error") || enhancedCode.startsWith("<!-- CRITICAL_ERROR")) {
+            console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} resulted in an error comment:`, enhancedCode);
+            // If enhancement returns an error, we might want to return the error or the last good code.
+            // For now, let's return the error comment from enhancement.
+            currentCode = enhancedCode;
+            break; 
         }
-        return { code: `<!-- ERROR_DURING_PROMPT_CALL: ${message} -->` };
-     }
-   }
+        
+        // If enhancement provides shorter code for some reason, or same, stick with previous if it was better.
+        // This check might be too simplistic, but aims to avoid regression in length.
+        if (countLines(enhancedCode) < countLines(currentCode) && countLines(currentCode) > 0) {
+            console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} produced shorter code (${countLines(enhancedCode)} lines vs ${countLines(currentCode)}). Keeping previous version.`);
+            break;
+        }
+
+        currentCode = enhancedCode;
+        console.log(`[generateCodeFlow] Iteration ${iteration} result: ${countLines(currentCode)} lines. Code length: ${currentCode.length}`);
+      }
+
+      if (iteration === MAX_ITERATIONS && countLines(currentCode) < MIN_TARGET_LINES) {
+        console.warn(`[generateCodeFlow] Max iterations reached, but code is still ${countLines(currentCode)} lines (target: ${MIN_TARGET_LINES}).`);
+      }
+      
+      if (!currentCode) {
+        // This case should ideally be caught earlier
+        return { code: "<!-- CRITICAL_ERROR: Code became null during processing. -->" };
+      }
+      // Basic check for HTML completeness
+       if (!currentCode.toLowerCase().startsWith('<!doctype html>') || !currentCode.toLowerCase().endsWith('</html>')) {
+           if (!currentCode.startsWith("<!-- Error") && !currentCode.startsWith("<!-- CRITICAL_ERROR")) { // Don't warn if it's an error comment
+             console.warn("[generateCodeFlow] Final generated code might be incomplete or not valid HTML. Length:", currentCode.length);
+           }
+       }
+
+      return { code: currentCode };
+
+    } catch (error) {
+      console.error("[generateCodeFlow] Error during iterative code generation process:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("Candidate was blocked due to")) {
+        return { code: `<!-- Error: Content generation blocked by safety settings. Details: ${message} -->` };
+      }
+      if (message.toLowerCase().includes("schema validation failed")) {
+        return { code: `<!-- ERROR_GENKIT_SCHEMA_VALIDATION: The AI model's response did not match the expected JSON format. Details: ${message} -->` };
+      }
+      return { code: `<!-- ERROR_DURING_CODE_GENERATION_FLOW: ${message} -->` };
+    }
+  }
 );
 
+    
