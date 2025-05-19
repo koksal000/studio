@@ -14,10 +14,10 @@ export const ai = genkit({
       // Gemini 2.0 Flash might have different limits, but 8192 is a good target.
       defaultGenerationOptions: {
         maxOutputTokens: 8192,
-        topP: 0.95, // Reverted to a more standard value for gemini-2.0-flash
+        topP: 0.95, // Standard value for gemini-2.0-flash
       },
     }),
   ],
-  model: 'googleai/gemini-2.0-flash', // Ensures we are using gemini-2.0-flash
+  model: 'googleai/gemini-2.0-flash', // Reverted to gemini-2.0-flash from gemini-2.0-flash-exp
 });
 
