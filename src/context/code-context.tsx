@@ -2,10 +2,9 @@
 'use client';
 
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
-import { generateCode } from '@/ai/flows/generate-code-from-prompt';
-import type { GenerateCodeOutput } from '@/ai/flows/generate-code-from-prompt';
-import { refactorCode } from '@/ai/flows/refactor-code';
-import type { RefactorCodeOutput } from '@/ai/flows/refactor-code';
+import { generateCode, GenerateCodeOutput } from '@/ai/flows/generate-code-from-prompt';
+import { refactorCode, RefactorCodeOutput } from '@/ai/flows/refactor-code';
+import { enhanceCode, EnhanceCodeInput, EnhanceCodeOutput } from '@/ai/flows/enhance-code'; // Added for enhancement
 
 export interface GeneratedFile {
   fileName: string;
@@ -28,31 +27,40 @@ interface CodeContextType {
   setIsRefactorModalOpen: (isOpen: boolean) => void;
   refactorPrompt: string;
   setRefactorPrompt: (prompt: string) => void;
-  refactoredCode: string | null; 
+  refactoredCode: string | null;
   isRefactoring: boolean;
   refactorError: string | null;
-  handleRefactorCode: () => Promise<void>; 
-  applyRefactor: () => void; 
+  handleRefactorCode: () => Promise<void>;
+  applyRefactor: () => void;
   previousGeneratedCode: string | null;
   undoRefactor: () => void;
+
+  // For Enhancement Feature
+  isEnhancing: boolean;
+  enhanceError: string | null;
+  handleEnhanceCode: () => Promise<void>;
 }
 
 const CodeContext = createContext<CodeContextType | undefined>(undefined);
 
 export const CodeProvider = ({ children }: { children: ReactNode }) => {
   const [prompt, setPrompt] = useState<string>('');
-  const [generatedCode, setGeneratedCode] = useState<string | null>(null); 
+  const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [previousGeneratedCode, setPreviousGeneratedCode] = useState<string | null>(null);
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false); 
-  const [error, setError] = useState<string | null>(null); 
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [isRefactorModalOpen, setIsRefactorModalOpen] = useState<boolean>(false);
   const [refactorPrompt, setRefactorPrompt] = useState<string>('');
-  const [refactoredCode, setRefactoredCode] = useState<string | null>(null); 
-  const [isRefactoring, setIsRefactoring] = useState<boolean>(false); 
-  const [refactorError, setRefactorError] = useState<string | null>(null); 
+  const [refactoredCode, setRefactoredCode] = useState<string | null>(null);
+  const [isRefactoring, setIsRefactoring] = useState<boolean>(false);
+  const [refactorError, setRefactorError] = useState<string | null>(null);
+
+  // For Enhancement Feature
+  const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
+  const [enhanceError, setEnhanceError] = useState<string | null>(null);
 
   const parseHtmlString = useCallback((htmlString: string | null): GeneratedFile[] => {
     if (!htmlString || typeof htmlString !== 'string' || htmlString.trim() === '') {
@@ -62,14 +70,15 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    let newPreviewUrl: string | null = null;
+    let newPreviewUrlObj: { url: string | null } = { url: null };
+
     if (generatedCode) {
       const files = parseHtmlString(generatedCode);
       setGeneratedFiles(files);
       if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:') && !files[0].content.startsWith('<!-- WARNING:') && !files[0].content.startsWith('<!-- CRITICAL_ERROR:')) {
         try {
           const blob = new Blob([files[0].content], { type: 'text/html' });
-          newPreviewUrl = URL.createObjectURL(blob);
+          newPreviewUrlObj.url = URL.createObjectURL(blob);
         } catch (e) {
           console.error("Error creating blob for preview (useEffect generatedCode):", e);
           setError("Could not create preview from the generated content.");
@@ -83,12 +92,12 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       if (currentOldUrl) {
         URL.revokeObjectURL(currentOldUrl);
       }
-      return newPreviewUrl;
+      return newPreviewUrlObj.url;
     });
 
     return () => {
-      if (newPreviewUrl) {
-        URL.revokeObjectURL(newPreviewUrl);
+      if (newPreviewUrlObj.url) {
+        URL.revokeObjectURL(newPreviewUrlObj.url);
       }
     };
   }, [generatedCode, parseHtmlString]);
@@ -103,14 +112,15 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     setGeneratedCode(null);
     setPreviousGeneratedCode(null);
-    setRefactoredCode(null); 
+    setRefactoredCode(null);
+    setEnhanceError(null);
 
     try {
       const result: GenerateCodeOutput = await generateCode({ prompt });
       if (result && typeof result.code === 'string') {
         setGeneratedCode(result.code);
         if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- WARNING:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
-          setError(result.code.trim() === '' ? 'AI returned empty content.' : `Error from AI: ${result.code}`);
+          setError(result.code.trim() === '' ? 'AI returned empty content.' : result.code);
         }
       } else {
         const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY (GenerateCode).';
@@ -127,7 +137,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const handleRefactorCode = async () => { 
+  const handleRefactorCode = async () => {
     if (!refactorPrompt) {
       setRefactorError('Please enter refactoring instructions.');
       return;
@@ -139,15 +149,16 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
     setIsRefactoring(true);
     setRefactorError(null);
-    setRefactoredCode(null); 
+    setEnhanceError(null);
+    setRefactoredCode(null);
 
     try {
-      const currentCodeToRefactor = generatedCode; 
+      const currentCodeToRefactor = generatedCode;
       const result: RefactorCodeOutput = await refactorCode({ code: currentCodeToRefactor, prompt: refactorPrompt });
       if (result && typeof result.code === 'string') {
-        setRefactoredCode(result.code); 
+        setRefactoredCode(result.code);
         if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- WARNING:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
-           setRefactorError(result.code.trim() === '' ? 'AI returned empty refactored code.' : `Error from AI: ${result.code}`);
+           setRefactorError(result.code.trim() === '' ? 'AI returned empty refactored code.' : result.code);
         }
       } else {
         const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY_FOR_REFACTOR.';
@@ -164,19 +175,64 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const applyRefactor = () => { 
+  const applyRefactor = () => {
     if (refactoredCode && typeof refactoredCode === 'string' && !(refactoredCode.startsWith('<!-- Error:') || refactoredCode.startsWith('<!-- WARNING:') || refactoredCode.startsWith('<!-- CRITICAL_ERROR:'))) {
-      setPreviousGeneratedCode(generatedCode); 
-      setGeneratedCode(refactoredCode); 
-      setRefactoredCode(null); 
+      setPreviousGeneratedCode(generatedCode);
+      setGeneratedCode(refactoredCode);
+      setRefactoredCode(null);
       setRefactorPrompt('');
       setIsRefactorModalOpen(false);
-      setError(null); 
-      setRefactorError(null); 
+      setError(null);
+      setRefactorError(null);
+      setEnhanceError(null);
     } else {
       setRefactorError(refactoredCode === null ? "Cannot apply changes: No refactored code available." : "Cannot apply changes: Refactored code contains errors or is empty.");
     }
   };
+
+  const handleEnhanceCode = async () => {
+    if (!generatedCode) {
+      setEnhanceError('No code available to enhance.');
+      return;
+    }
+    if (!prompt) {
+      setEnhanceError('Original prompt is missing, cannot enhance.');
+      return;
+    }
+
+    setIsEnhancing(true);
+    setEnhanceError(null);
+    setError(null); // Clear main error
+    setRefactorError(null); // Clear refactor error
+
+    try {
+      const currentCodeToEnhance = generatedCode;
+      const result: EnhanceCodeOutput = await enhanceCode({
+        currentCode: currentCodeToEnhance,
+        originalUserPrompt: prompt,
+      });
+
+      if (result && typeof result.enhancedCode === 'string') {
+        if (result.enhancedCode.trim() === '' || result.enhancedCode.startsWith('<!-- Error:') || result.enhancedCode.startsWith('<!-- WARNING:') || result.enhancedCode.startsWith('<!-- CRITICAL_ERROR:')) {
+          setEnhanceError(result.enhancedCode.trim() === '' ? 'AI returned empty enhanced code.' : result.enhancedCode);
+          // Do not update generatedCode if enhancement returns an error/warning
+        } else {
+          setPreviousGeneratedCode(currentCodeToEnhance);
+          setGeneratedCode(result.enhancedCode);
+        }
+      } else {
+        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_STRUCTURE_FOR_ENHANCED_CODE.';
+        setEnhanceError(nullErrorMsg);
+      }
+    } catch (err) {
+      console.error('Error in handleEnhanceCode:', err);
+      const errorMessage = `Failed to enhance code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
+      setEnhanceError(errorMessage);
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
 
   const undoRefactor = () => {
     if (previousGeneratedCode !== null) {
@@ -184,7 +240,8 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setPreviousGeneratedCode(null);
       setError(null);
       setRefactorError(null);
-      setRefactoredCode(null); 
+      setRefactoredCode(null);
+      setEnhanceError(null);
     }
   };
 
@@ -213,36 +270,23 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePreview = useCallback(() => {
+    let newUrlObj: { url: string | null } = { url: null };
     if (generatedCode) {
       const files = parseHtmlString(generatedCode);
       if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:') && !files[0].content.startsWith('<!-- WARNING:') && !files[0].content.startsWith('<!-- CRITICAL_ERROR:')) {
         try {
           const blob = new Blob([files[0].content], { type: 'text/html' });
-          const newUrl = URL.createObjectURL(blob);
-          setPreviewUrl(oldUrl => {
-            if (oldUrl) URL.revokeObjectURL(oldUrl);
-            return newUrl;
-          });
+          newUrlObj.url = URL.createObjectURL(blob);
         } catch (e) {
           console.error("Error creating blob for preview (updatePreview):", e);
           setError("Could not create preview from the generated content.");
-           setPreviewUrl(oldUrl => {
-            if (oldUrl) URL.revokeObjectURL(oldUrl);
-            return null;
-          });
         }
-      } else {
-        setPreviewUrl(oldUrl => {
-          if (oldUrl) URL.revokeObjectURL(oldUrl);
-          return null;
-        });
       }
-    } else {
-       setPreviewUrl(oldUrl => {
-        if (oldUrl) URL.revokeObjectURL(oldUrl);
-        return null;
-      });
     }
+    setPreviewUrl(oldUrl => {
+      if (oldUrl) URL.revokeObjectURL(oldUrl);
+      return newUrlObj.url;
+    });
   }, [generatedCode, parseHtmlString, setError]);
 
   return (
@@ -269,6 +313,9 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
         applyRefactor,
         previousGeneratedCode,
         undoRefactor,
+        isEnhancing,
+        enhanceError,
+        handleEnhanceCode,
       }}
     >
       {children}
