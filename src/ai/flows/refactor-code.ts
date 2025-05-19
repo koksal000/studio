@@ -62,7 +62,7 @@ You will be given code and a prompt describing how to refactor the code. Apply t
     **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
     The very first character of your entire response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
-    IF YOU CANNOT FULFILL THE REQUEST (e.g. due to safety constraints or an impossible request), return null.
+    IF YOU CANNOT FULFILL THE REQUEST (e.g., due to safety constraints or an impossible request), INSTEAD OF RETURNING NULL, return an HTML comment explaining why you cannot fulfill the request (e.g., \`<!-- Error: Cannot refactor due to X, Y, Z. -->\`). If you *can* fulfill the request, provide ONLY the HTML code.
 2.  **Completeness:** Ensure the output is the *entire*, refactored code. If the full content cannot be generated in one response, provide as much as possible. The system will attempt to complete it.
 
 Original Code:
@@ -73,7 +73,7 @@ Original Code:
 Refactoring Prompt:
 {{{prompt}}}
 
-Refactored Code (COMPLETE HTML ONLY, starting with <!DOCTYPE html>, ending with </html>, OR null if unable to generate):`,
+Refactored Code (COMPLETE HTML ONLY, starting with <!DOCTYPE html>, ending with </html>, OR an HTML comment explaining failure):`,
   config: {
     safetySettings: permissiveSafetySettings,
   },
@@ -112,9 +112,9 @@ Partially Refactored Code Generated So Far:
     **DO NOT REPEAT ANY PART OF THE PARTIAL CODE.**
     **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
-2.  **Completeness:** Ensure the final combined code (partial code + your continuation) is a single, valid, and complete refactored HTML file ending with \`</html>\`, fully applying the refactoring prompt to the entire original code. IF YOU CANNOT COMPLETE IT, return null.
+2.  **Completeness:** Ensure the final combined code (partial code + your continuation) is a single, valid, and complete refactored HTML file ending with \`</html>\`, fully applying the refactoring prompt to the entire original code. IF YOU CANNOT COMPLETE IT, return an HTML comment explaining why (e.g., \`<!-- Error: Could not complete refactor due to X. -->\`).
 
-Continuation of Refactored Code (HTML ONLY, completes the HTML file ending with </html>, OR null if unable to complete):`,
+Continuation of Refactored Code (HTML ONLY, completes the HTML file ending with </html>, OR an HTML comment explaining failure):`,
   config: {
     safetySettings: permissiveSafetySettings,
   },
@@ -165,15 +165,22 @@ const refactorCodeFlow = ai.defineFlow(
       let response = await refactorCodePrompt(input);
       if (response.output === null) {
         console.error("Initial refactor returned null from the model.");
-        return `<!-- Error: AI model returned null during initial refactor. -->\n${input.code}`;
+        return `<!-- Error: AI model returned null during initial refactor. This often indicates an API key issue or the model cannot fulfill the request. -->\n${input.code}`;
       }
       let generatedHtml = cleanupCode(response.output);
       fullRefactoredCode = generatedHtml;
 
       if (fullRefactoredCode.trim() === '' && response.output !== null) {
-        console.warn("Initial refactor resulted in an empty string after cleanup.");
+        console.warn("Initial refactor resulted in an empty string after cleanup, though the model did not return null.");
         return `<!-- Warning: AI returned an empty string during refactor. -->\n${input.code}`;
       }
+
+      // If the model returned an error comment, pass it through
+      if (fullRefactoredCode.startsWith('<!-- Error:') || fullRefactoredCode.startsWith('<!-- Warning:')) {
+         console.warn("AI model returned an error/warning comment during refactor:", fullRefactoredCode);
+         return fullRefactoredCode; // Keep original code if refactor fails with comment
+      }
+
 
       while (!isHtmlComplete(fullRefactoredCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
          attempts++;
@@ -194,6 +201,10 @@ const refactorCodeFlow = ai.defineFlow(
              const continuationHtml = cleanupCode(continuationResponse.output); 
 
              if (continuationHtml) {
+                 if (continuationHtml.startsWith('<!-- Error:') || continuationHtml.startsWith('<!-- Warning:')) {
+                      console.warn(`Refactor continuation attempt ${attempts} returned an error/warning comment:`, continuationHtml);
+                      return `${fullRefactoredCode}\n${continuationHtml}`; // Append the error comment
+                  }
                  fullRefactoredCode += '\n' + continuationHtml;
                  console.log(`Appended refactor continuation (length: ${continuationHtml.length}). Total length: ${fullRefactoredCode.length}`);
              } else {
@@ -210,17 +221,17 @@ const refactorCodeFlow = ai.defineFlow(
          }
       }
 
-      if (!isHtmlComplete(fullRefactoredCode)) {
+      if (!isHtmlComplete(fullRefactoredCode) && !(fullRefactoredCode.startsWith('<!-- Error:') || fullRefactoredCode.startsWith('<!-- Warning:'))) {
           console.warn(`Refactored code might still be incomplete after ${attempts} continuation attempts.`);
           if (fullRefactoredCode.length < 200 && !fullRefactoredCode.toLowerCase().includes("<html") && !fullRefactoredCode.startsWith("<!DOCTYPE html>")) {
             return `<!-- Error: AI model did not produce valid refactored HTML content. Received: ${fullRefactoredCode.substring(0,500)} -->\n${input.code}`;
           }
           return `${fullRefactoredCode}\n<!-- Warning: Refactored code might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->`;
       } else {
-          console.log("Refactored code generation appears complete.");
+          console.log("Refactored code generation appears complete or ended with an AI-provided error/warning.");
       }
 
-      if (fullRefactoredCode.trim().length < 200 && !fullRefactoredCode.toLowerCase().includes("<html")) {
+      if (!(fullRefactoredCode.startsWith('<!-- Error:') || fullRefactoredCode.startsWith('<!-- Warning:')) && fullRefactoredCode.trim().length < 200 && !fullRefactoredCode.toLowerCase().includes("<html")) {
         console.warn("Refactored code is suspiciously short and might not be valid HTML:", fullRefactoredCode.substring(0,100));
         return `<!-- Error: Refactored code is too short or not valid HTML. Output: ${fullRefactoredCode.substring(0,500)} -->\n${input.code}`;
       }
@@ -236,3 +247,4 @@ const refactorCodeFlow = ai.defineFlow(
     }
   }
 );
+

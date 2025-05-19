@@ -163,7 +163,7 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
     **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
     The very first character of your entire response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
-    IF YOU CANNOT FULFILL THE REQUEST (e.g. due to safety constraints or an impossible request), return null.
+    IF YOU CANNOT FULFILL THE REQUEST (e.g., due to safety constraints or an impossible request), INSTEAD OF RETURNING NULL, return an HTML comment explaining why you cannot fulfill the request (e.g., \`<!-- Error: The request is too complex due to X, Y, Z. -->\`). If you *can* fulfill the request, provide ONLY the HTML code.
 
 2.  **Adhere to the 100 Rules:** You MUST follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
     ${HUNDRED_RULES}
@@ -184,7 +184,7 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
 User Prompt:
 {{{prompt}}}
 
-Generated Code (SINGLE HTML FILE ONLY, starting with <!DOCTYPE html>, ending with </html>, OR null if unable to generate):`,
+Generated Code (SINGLE HTML FILE ONLY, starting with <!DOCTYPE html>, ending with </html>, OR an HTML comment explaining failure):`,
   config: {
     safetySettings: permissiveSafetySettings,
   },
@@ -218,9 +218,9 @@ Your response MUST be *only* the continuation of the HTML code.
 **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
 **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
 Ensure the final combined code (partial code + your continuation) is a single, valid, and complete HTML file ending with \`</html>\`. Adhere to all the rules and advanced UI/UX requirements from the original generation task.
-IF YOU CANNOT COMPLETE IT, return null.
+IF YOU CANNOT COMPLETE IT, return an HTML comment explaining why (e.g., \`<!-- Error: Could not complete due to X. -->\`).
 
-Continuation Code (HTML ONLY, completes the HTML file ending with </html>, OR null if unable to complete):`,
+Continuation Code (HTML ONLY, completes the HTML file ending with </html>, OR an HTML comment explaining failure):`,
   config: {
     safetySettings: permissiveSafetySettings,
   },
@@ -273,17 +273,19 @@ const generateCodeFlow = ai.defineFlow(
 
        if (response.output === null) {
          console.error("Initial generation returned null from the model.");
-         // Propagate null or return a specific error string for the context to handle
-         return "<!-- Error: AI model returned null during initial generation. -->";
+         return "<!-- Error: AI model returned null during initial generation. This often indicates an API key issue or the model cannot fulfill the request. -->";
        }
        let generatedHtml = cleanupCode(response.output);
        fullCode = generatedHtml;
 
        if (fullCode.trim() === '' && response.output !== null) {
-         // Model returned a string, but it was empty after cleanup
-         console.warn("Initial generation resulted in an empty string after cleanup.");
-         // No need for continuation if it's already empty.
-         return "<!-- Warning: AI returned an empty string. -->";
+         console.warn("Initial generation resulted in an empty string after cleanup, though the model did not return null.");
+         return "<!-- Warning: AI returned an empty string after cleanup. -->";
+       }
+        // If the model returned an error comment, pass it through
+       if (fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:')) {
+         console.warn("AI model returned an error/warning comment:", fullCode);
+         return fullCode;
        }
 
 
@@ -299,21 +301,26 @@ const generateCodeFlow = ai.defineFlow(
               
               if (continuationResponse.output === null) {
                   console.warn(`Continuation attempt ${attempts} returned null.`);
-                  // It's probably better to return the partial code with a warning than null here
                   return `${fullCode}\n<!-- Warning: AI returned null during continuation attempt ${attempts}. Code may be incomplete. -->`;
               }
 
               const continuationHtml = cleanupCode(continuationResponse.output); 
 
               if (continuationHtml) {
+                  if (continuationHtml.startsWith('<!-- Error:') || continuationHtml.startsWith('<!-- Warning:')) {
+                      console.warn(`Continuation attempt ${attempts} returned an error/warning comment:`, continuationHtml);
+                      return `${fullCode}\n${continuationHtml}`; // Append the error comment
+                  }
                   fullCode += '\n' + continuationHtml; 
                   console.log(`Appended continuation (length: ${continuationHtml.length}). Total length: ${fullCode.length}`);
               } else {
                    console.warn(`Continuation attempt ${attempts} returned empty code.`);
+                   // If the initial code was also very short and non-HTML, it's a bigger problem.
                    if (fullCode.length < 100 && !fullCode.toLowerCase().includes("<html")) {
                         console.error("Initial generation and continuation are non-HTML or too short. Aborting.");
-                        return `<!-- Error: AI model did not produce valid HTML after ${attempts} attempts. Output was: ${fullCode.substring(0, 200)} -->`;
+                        return `<!-- Error: AI model did not produce valid HTML after ${attempts} attempts. Initial output was: ${fullCode.substring(0, 200)} -->`;
                    }
+                   // Otherwise, might be a small hiccup, break and return what we have.
                    break; 
               }
           } catch (continuationError) {
@@ -322,34 +329,32 @@ const generateCodeFlow = ai.defineFlow(
           }
        }
 
-       if (!isHtmlComplete(fullCode)) {
+       if (!isHtmlComplete(fullCode) && !(fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:'))) {
           console.warn(`Code might still be incomplete after ${attempts} continuation attempts. Length: ${fullCode.length}`);
           if (fullCode.length < 200 && !fullCode.toLowerCase().includes("<html") && !fullCode.startsWith("<!DOCTYPE html>")) {
             return `<!-- Error: AI model did not produce valid HTML content. Received: ${fullCode.substring(0,500)} -->`;
           }
           return `${fullCode}\n<!-- Warning: Code generation might be incomplete after ${MAX_CONTINUATION_ATTEMPTS} attempts. -->`;
        } else {
-           console.log("Code generation appears complete.");
+           console.log("Code generation appears complete or ended with an AI-provided error/warning.");
        }
        
-       if (fullCode.trim().length < 200 && !fullCode.toLowerCase().includes("<html")) {
+       // Final check for very short or non-HTML output, unless it's an intentional error message
+       if (!(fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:')) && fullCode.trim().length < 200 && !fullCode.toLowerCase().includes("<html")) {
            console.warn("Generated code is suspiciously short and might not be valid HTML:", fullCode.substring(0,100));
            return `<!-- Error: Generated code is too short or not valid HTML. Output: ${fullCode.substring(0,500)} -->`;
        }
 
 
        return fullCode;
-     } catch (initialError) { // This catch is for errors from the initial generateCodePrompt call
+     } catch (initialError) { 
         console.error("Error during initial code generation (or its schema validation):", initialError);
         const message = initialError instanceof Error ? initialError.message : String(initialError);
         if (message.includes("Candidate was blocked due to")) {
             return `<!-- Error: Content generation blocked by safety settings. Please revise your prompt or contact support. Details: ${message} -->`;
         }
-        // If it's the "INVALID_ARGUMENT... Provided data: null" error, it means the model returned null and failed definePrompt's schema.
-        // The change to nullable output schema in definePrompt should prevent this specific error from being thrown by definePrompt.
-        // Instead, response.output would be null, handled above.
-        // However, if other schema validation errors occur, they would be caught here.
         return `<!-- Error during initial code generation: ${message} -->`;
      }
    }
 );
+
