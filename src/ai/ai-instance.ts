@@ -7,17 +7,11 @@ export const ai = genkit({
   plugins: [
     googleAI({
       apiKey: process.env.GOOGLE_GENAI_API_KEY,
-      // Increase the maximum number of output tokens to reduce truncation.
-      // Note: Higher values might increase latency and cost. Adjust as needed.
-      // The exact maximum depends on the model version.
-      // Gemini 1.5 Flash supports up to 8192 output tokens.
-      // Gemini 2.0 Flash might have different limits, but 8192 is a good target.
       defaultGenerationOptions: {
         maxOutputTokens: 8192,
-        topP: 0.95, // Standard value for gemini-2.0-flash
+        topP: 0.95,
       },
     }),
   ],
-  model: 'googleai/gemini-2.0-flash', // Reverted to gemini-2.0-flash from gemini-2.0-flash-exp
+  model: 'googleai/gemini-2.0-flash-exp', // Reverted to gemini-2.0-flash-exp
 });
-

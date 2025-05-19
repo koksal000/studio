@@ -6,8 +6,6 @@ import { generateCode } from '@/ai/flows/generate-code-from-prompt';
 import type { GenerateCodeOutput } from '@/ai/flows/generate-code-from-prompt';
 import { refactorCode } from '@/ai/flows/refactor-code';
 import type { RefactorCodeOutput } from '@/ai/flows/refactor-code';
-import { testApiConnection } from '@/ai/flows/test-api-flow'; // New import
-import type { TestApiOutput } from '@/ai/flows/test-api-flow'; // New import
 
 export interface GeneratedFile {
   fileName: string;
@@ -17,7 +15,7 @@ export interface GeneratedFile {
 interface CodeContextType {
   prompt: string;
   setPrompt: (prompt: string) => void;
-  generatedCode: string | null;
+  generatedCode: string | null; // Stores the HTML string directly
   generatedFiles: GeneratedFile[];
   isLoading: boolean;
   error: string | null;
@@ -30,19 +28,13 @@ interface CodeContextType {
   setIsRefactorModalOpen: (isOpen: boolean) => void;
   refactorPrompt: string;
   setRefactorPrompt: (prompt: string) => void;
-  refactoredCode: string | null;
+  refactoredCode: string | null; // Stores the refactored HTML string directly
   isRefactoring: boolean;
   refactorError: string | null;
   handleRefactorCode: () => Promise<void>;
   applyRefactor: () => void;
   previousGeneratedCode: string | null;
   undoRefactor: () => void;
-
-  // For API test
-  isTestingApi: boolean;
-  testApiResponse: string | null;
-  testApiError: string | null;
-  handleTestApiConnection: () => Promise<void>;
 }
 
 const CodeContext = createContext<CodeContextType | undefined>(undefined);
@@ -58,21 +50,15 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
   const [isRefactorModalOpen, setIsRefactorModalOpen] = useState<boolean>(false);
   const [refactorPrompt, setRefactorPrompt] = useState<string>('');
-  const [refactoredCode, setRefactoredCode] = useState<string | null>(null);
+  const [refactoredCode, setRefactoredCode] = useState<string | null>(null); // Stores the proposed refactored HTML string
   const [isRefactoring, setIsRefactoring] = useState<boolean>(false);
   const [refactorError, setRefactorError] = useState<string | null>(null);
 
-  // New state for API test
-  const [isTestingApi, setIsTestingApi] = useState<boolean>(false);
-  const [testApiResponse, setTestApiResponse] = useState<string | null>(null);
-  const [testApiError, setTestApiError] = useState<string | null>(null);
-
-
-  const parseGeneratedCode = useCallback((code: string | null): GeneratedFile[] => {
-    if (!code || typeof code !== 'string' || code.trim() === '') {
+  const parseHtmlString = useCallback((htmlString: string | null): GeneratedFile[] => {
+    if (!htmlString || typeof htmlString !== 'string' || htmlString.trim() === '') {
       return [];
     }
-    return [{ fileName: 'index.html', content: code.trim() }];
+    return [{ fileName: 'index.html', content: htmlString.trim() }];
   }, []);
 
   useEffect(() => {
@@ -86,7 +72,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
         return null;
       }
 
-      const files = parseGeneratedCode(generatedCode);
+      const files = parseHtmlString(generatedCode); // Use parseHtmlString
       setGeneratedFiles(files);
 
       if (files.length === 0 || !files[0].content) {
@@ -103,7 +89,8 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
         return null;
       }
     });
-  }, [generatedCode, parseGeneratedCode, setError]);
+  }, [generatedCode, parseHtmlString, setError]);
+
 
   useEffect(() => {
     const urlToCleanOnUnmount = previewUrl;
@@ -125,23 +112,22 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setPreviousGeneratedCode(null);
 
     try {
-      const resultCode: GenerateCodeOutput = await generateCode({ prompt });
-      if (resultCode !== null) {
-        setGeneratedCode(resultCode);
-        if (resultCode.trim() === '' || resultCode.startsWith('<!-- Error:') || resultCode.startsWith('<!-- Warning:') || resultCode.startsWith('<!-- CRITICAL_ERROR:')) {
-             setError(resultCode.trim() === '' ? 'AI returned empty content.' : resultCode);
+      const result: GenerateCodeOutput = await generateCode({ prompt }); // Expects { code: string }
+      if (result && result.code) {
+        setGeneratedCode(result.code);
+        if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- Warning:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
+             setError(result.code.trim() === '' ? 'AI returned empty content.' : result.code);
         }
       } else {
-        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL. The AI model itself provided no content for the initial generation. This usually indicates an API key issue, a problem with the AI model\'s ability to handle the request, or a temporary service disruption.';
+        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_EMPTY_CODE. The AI model itself provided no content or an invalid structure.';
         setError(nullErrorMsg);
-        setGeneratedCode('<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL (handled in context) -->');
+        setGeneratedCode(`<!-- ${nullErrorMsg} (handled in context) -->`);
       }
     } catch (err) {
       console.error('Error in handleGenerateCode:', err);
       const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
       setError(errorMessage);
-      const errorHtml = `<!-- Context Error: ${errorMessage} -->`;
-      setGeneratedCode(errorHtml);
+      setGeneratedCode(`<!-- Context Error: ${errorMessage} -->`);
     } finally {
       setIsLoading(false);
     }
@@ -162,16 +148,16 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setRefactoredCode(null);
 
     try {
-      const resultRefactoredCode: RefactorCodeOutput = await refactorCode({ code: generatedCode, prompt: refactorPrompt });
-      if (resultRefactoredCode !== null) {
-        setRefactoredCode(resultRefactoredCode);
-         if (resultRefactoredCode.trim() === '' || resultRefactoredCode.startsWith('<!-- Error:') || resultRefactoredCode.startsWith('<!-- Warning:') || resultRefactoredCode.startsWith('<!-- CRITICAL_ERROR:')) {
-            setRefactorError(resultRefactoredCode.trim() === '' ? 'AI returned empty refactored code.' : resultRefactoredCode);
+      const result: RefactorCodeOutput = await refactorCode({ code: generatedCode, prompt: refactorPrompt }); // Expects { code: string }
+      if (result && result.code) {
+        setRefactoredCode(result.code);
+         if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- Warning:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
+            setRefactorError(result.code.trim() === '' ? 'AI returned empty refactored code.' : result.code);
         }
       } else {
-        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_FOR_REFACTOR. The AI model provided no content for refactoring.';
+        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_EMPTY_CODE_FOR_REFACTOR. The AI model provided no content or an invalid structure for refactoring.';
         setRefactorError(nullErrorMsg);
-        setRefactoredCode(`<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_FOR_REFACTOR (handled in context) -->\n${generatedCode}`);
+        setRefactoredCode(`<!-- ${nullErrorMsg} (handled in context) -->\n${generatedCode}`);
       }
     } catch (err) {
       console.error('Error in handleRefactorCode:', err);
@@ -233,7 +219,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       if (!generatedCode) {
         return null;
       }
-      const files = parseGeneratedCode(generatedCode);
+      const files = parseHtmlString(generatedCode); // Use parseHtmlString
       if (files.length === 0 || !files[0].content) {
         return null;
       }
@@ -247,36 +233,8 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
         return null;
       }
     });
-  }, [generatedCode, parseGeneratedCode, setError]);
+  }, [generatedCode, parseHtmlString, setError]);
 
-  const handleTestApiConnection = async () => {
-    setIsTestingApi(true);
-    setTestApiResponse(null);
-    setTestApiError(null);
-    console.log('[CodeContext] handleTestApiConnection called');
-    try {
-      const result: TestApiOutput = await testApiConnection({ message: 'merhaba' });
-      if (result && result.reply) {
-        if (result.reply.startsWith('<!-- ERROR: AI_MODEL_RETURNED_NULL_OR_EMPTY_FOR_TEST -->')) {
-            setTestApiError('Test API call failed: Model returned null or empty for the test.');
-            console.error('[CodeContext] Test API returned null/empty error:', result.reply);
-        } else {
-            setTestApiResponse(result.reply);
-            console.log('[CodeContext] Test API success:', result.reply);
-        }
-      } else {
-        const noReplyMsg = 'Test API call succeeded but received no reply content from the AI model.';
-        setTestApiError(noReplyMsg);
-        console.error('[CodeContext] Test API no reply or invalid structure:', result);
-      }
-    } catch (err) {
-      console.error('[CodeContext] Error in handleTestApiConnection:', err);
-      const errorMessage = `Test API call failed. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
-      setTestApiError(errorMessage);
-    } finally {
-      setIsTestingApi(false);
-    }
-  };
 
   return (
     <CodeContext.Provider
@@ -302,12 +260,6 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
         applyRefactor,
         previousGeneratedCode,
         undoRefactor,
-
-        // For API test
-        isTestingApi,
-        testApiResponse,
-        testApiError,
-        handleTestApiConnection,
       }}
     >
       {children}
