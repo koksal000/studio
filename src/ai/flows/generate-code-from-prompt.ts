@@ -2,6 +2,7 @@
 
 /**
  * @fileOverview A code generation AI agent based on a prompt.
+ * It now includes logic to attempt completion if the initial output is truncated.
  *
  * - generateCode - A function that handles the code generation process.
  * - GenerateCodeInput - The input type for the generateCode function.
@@ -11,7 +12,12 @@
 import {ai} from '@/ai/ai-instance';
 import {z} from 'genkit';
 import {HUNDRED_RULES, ADVANCED_UI_UX_GUIDELINES} from './promptSnippets';
+import {completeCode} from './complete-code-flow';
 
+// Helper function to count lines
+const countLines = (text: string | null | undefined): number => {
+  return text ? text.split('\n').length : 0;
+};
 
 const GenerateCodeInputSchema = z.object({
   prompt: z.string().describe('The prompt describing the code to generate.'),
@@ -23,16 +29,78 @@ const GenerateCodeOutputSchema = z.object({
 });
 export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>;
 
+// Function to check if HTML code seems incomplete (very basic check)
+function isHtmlIncomplete(htmlString: string): boolean {
+  if (!htmlString || typeof htmlString !== 'string') return true;
+  const trimmedHtml = htmlString.trim().toLowerCase();
+  // Basic check: Does it end with </html>? More sophisticated checks could be added.
+  return !trimmedHtml.endsWith('</html>');
+}
+
+const MAX_COMPLETION_ATTEMPTS = 2; // Max attempts to complete the code
 
 export async function generateCode(input: GenerateCodeInput): Promise<GenerateCodeOutput> {
   try {
-    const result = await generateCodeFlow(input);
-    // Ensure result and result.code are valid strings before returning
+    let result = await generateCodeFlow(input);
+    
     if (!result || typeof result.code !== 'string') {
       console.error("[generateCode export] AI model returned null or invalid structure for code. Result was:", result);
       return { code: "<!-- Error: AI model returned null or invalid structure for code property. -->" };
     }
-    return result;
+
+    let currentCode = result.code;
+    let completionAttempts = 0;
+
+    while (isHtmlIncomplete(currentCode) && completionAttempts < MAX_COMPLETION_ATTEMPTS && !currentCode.startsWith('<!-- Error:')) {
+      completionAttempts++;
+      console.log(`[generateCode export] Code from attempt ${completionAttempts-1} seems incomplete (length: ${currentCode.length}, ends with </html>: ${currentCode.trim().toLowerCase().endsWith('</html>')}). Attempting completion ${completionAttempts}/${MAX_COMPLETION_ATTEMPTS}.`);
+      
+      try {
+        const completionResult = await completeCode({
+          incompleteCode: currentCode,
+          originalUserPrompt: input.prompt,
+          instructionContext: `initial generation - completion attempt ${completionAttempts}`,
+        });
+
+        if (completionResult && typeof completionResult.completedCodePortion === 'string') {
+          if (completionResult.completedCodePortion.startsWith('<!-- CRITICAL_ERROR:') || completionResult.completedCodePortion.startsWith('<!-- ERROR_DURING_COMPLETION_FLOW:')) {
+             console.warn(`[generateCode export] Completion attempt ${completionAttempts} resulted in an error comment: ${completionResult.completedCodePortion}`);
+             currentCode += `\n${completionResult.completedCodePortion}`; // Append error to main code for visibility
+             break; // Stop trying to complete if completion itself errors
+          }
+          currentCode += completionResult.completedCodePortion;
+          console.log(`[generateCode export] Appended completion portion. New code length: ${currentCode.length}. AI believes complete: ${completionResult.isLikelyCompleteNow}`);
+          if (completionResult.isLikelyCompleteNow && !isHtmlIncomplete(currentCode)) {
+            console.log(`[generateCode export] Code is now likely complete after ${completionAttempts} attempts.`);
+            break;
+          }
+        } else {
+          console.warn(`[generateCode export] Completion attempt ${completionAttempts} returned invalid structure or null portion. Stopping completion.`);
+          currentCode += "\n<!-- WARNING: Code completion attempt returned invalid data. -->";
+          break;
+        }
+      } catch (completionError: any) {
+        console.error(`[generateCode export] Error during completion attempt ${completionAttempts}:`, completionError);
+        const errorMessage = completionError instanceof Error ? completionError.message : JSON.stringify(completionError);
+        currentCode += `\n<!-- ERROR_DURING_CODE_COMPLETION_EXPORT_LEVEL (Attempt ${completionAttempts}): ${errorMessage.replace(/-->/g, '--&gt;')} -->`;
+        break; // Stop trying if completion call itself fails critically
+      }
+    }
+
+    if (completionAttempts >= MAX_COMPLETION_ATTEMPTS && isHtmlIncomplete(currentCode)) {
+        console.warn(`[generateCode export] Max completion attempts (${MAX_COMPLETION_ATTEMPTS}) reached, but code still seems incomplete.`);
+        currentCode += "\n<!-- WARNING: Max completion attempts reached, code might still be incomplete. -->";
+    }
+    
+    // Final check if the final code is an error/warning comment itself
+     if (currentCode.trim() === '' || currentCode.startsWith('<!-- Error:') || currentCode.startsWith('<!-- WARNING:') || currentCode.startsWith('<!-- CRITICAL_ERROR:')) {
+       console.warn(`[generateCode export] Final generated code is an error/warning: ${currentCode.substring(0,100)}`);
+     } else {
+       console.log(`[generateCode export] Final generated code length: ${currentCode.length}, Lines: ${countLines(currentCode)}`);
+     }
+
+    return { code: currentCode };
+
   } catch (error: any) {
     console.error("[generateCode export] Critical error in generateCode flow export:", error);
     let errorMessage = "Unknown error in generateCode export.";
@@ -54,11 +122,11 @@ const generateCodePrompt = ai.definePrompt({
   input: {
     schema: GenerateCodeInputSchema,
   },
-  output: { // Expects a JSON object with a "code" property
+  output: { 
     schema: GenerateCodeOutputSchema,
   },
   config: {
-    safetySettings: [ // Permissive safety settings
+    safetySettings: [ 
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
       { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -76,9 +144,9 @@ The "code" value MUST be a single string containing the complete HTML document, 
 
 ABSOLUTELY NO MARKDOWN, NO EXPLANATORY TEXT OUTSIDE THE JSON STRUCTURE. ONLY THE JSON OBJECT.
 
-If, for any reason (such as an overly complex/impossible request that you CANNOT FULFILL), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: The request is too complex to fulfill. -->" }). DO NOT mention safety or content blocking in the error message unless it is the absolute only reason.
+If, for any reason (such as an overly complex/impossible request that you CANNOT FULFILL, or a safety/content policy violation), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: The request is too complex to fulfill. -->" }). Do NOT mention safety or content blocking in the error message unless it is the absolute only reason, or if you are specifically instructed by a safety policy to do so.
 
-TARGET OUTPUT LENGTH for the HTML code string: AIM FOR A MINIMUM OF 1000-1500 LINES OF CODE. For any non-trivial request, and even for very short user prompts (e.g., "a button"), you MUST proactively generate a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section (potentially 1500-5000+ lines), demonstrating deep interpretation and proactive feature addition.
+TARGET OUTPUT LENGTH for the HTML code string: AIM FOR A MINIMUM OF 1000-1500 LINES OF CODE. For any non-trivial request, and even for very short user prompts (e.g., "a button"), you MUST proactively generate a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section (potentially 1500-5000+ lines, aiming for an average of 2000-3000 lines for typical requests), demonstrating deep interpretation and proactive feature addition. Output should be a complete, functioning experience.
 
 Follow these instructions ABSOLUTELY AND STRICTLY:
 
@@ -96,7 +164,7 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
 
 6.  **No External Dependencies (Unless Critical and Inlined):** Do not include links to external libraries or frameworks. Prefer vanilla JavaScript solutions.
 
-7.  **Completeness & Robustness:** Ensure the generated HTML code for the "code" value is as complete as possible. Test edge cases in your "mental model" of the app. What happens if a user enters invalid data? What does a loading state look like? What about an empty state? Address these. Output the *entire* file content, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`.
+7.  **Completeness & Robustness:** Ensure the generated HTML code for the "code" value is as complete as possible. Test edge cases in your "mental model" of the app. What happens if a user enters invalid data? What does a loading state look like? What about an empty state? Address these. Output the *entire* file content, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`. DO NOT TRUNCATE YOUR OUTPUT. If the response would be too long, make it shorter but complete.
 
 User Prompt:
 {{{prompt}}}
@@ -109,7 +177,7 @@ const generateCodeFlow = ai.defineFlow(
   {
     name: 'generateCodeFlow',
     inputSchema: GenerateCodeInputSchema,
-    outputSchema: GenerateCodeOutputSchema, // Expects { code: string }
+    outputSchema: GenerateCodeOutputSchema, 
   },
   async (input): Promise<GenerateCodeOutput> => {
     console.log("[generateCodeFlow] Starting code generation. User prompt:", input.prompt);
@@ -127,7 +195,7 @@ const generateCodeFlow = ai.defineFlow(
         return { code: "<!-- WARNING: AI_MODEL_RETURNED_EMPTY_STRING_FOR_CODE_PROPERTY. -->" };
       }
       
-      console.log(`[generateCodeFlow] Code generation successful. Code length: ${output.code.length}, Lines: ${output.code.split('\n').length}`);
+      console.log(`[generateCodeFlow] Initial code generation successful. Code length: ${output.code.length}, Lines: ${countLines(output.code)}`);
       return output;
 
     } catch (error: any) {
