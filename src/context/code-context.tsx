@@ -2,9 +2,9 @@
 'use client';
 
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
-import { generateCode, GenerateCodeOutput } from '@/ai/flows/generate-code-from-prompt';
-import { refactorCode, RefactorCodeOutput } from '@/ai/flows/refactor-code';
-import { enhanceCode, EnhanceCodeInput, EnhanceCodeOutput } from '@/ai/flows/enhance-code'; // Added for enhancement
+import { generateCode, GenerateCodeInput, GenerateCodeOutput } from '@/ai/flows/generate-code-from-prompt';
+import { refactorCode, RefactorCodeInput, RefactorCodeOutput } from '@/ai/flows/refactor-code';
+import { enhanceCode, EnhanceCodeInput, EnhanceCodeOutput } from '@/ai/flows/enhance-code';
 
 export interface GeneratedFile {
   fileName: string;
@@ -32,10 +32,13 @@ interface CodeContextType {
   refactorError: string | null;
   handleRefactorCode: () => Promise<void>;
   applyRefactor: () => void;
+
   previousGeneratedCode: string | null;
   undoRefactor: () => void;
 
-  // For Enhancement Feature
+  futureGeneratedCode: string[];
+  redoChange: () => void;
+
   isEnhancing: boolean;
   enhanceError: string | null;
   handleEnhanceCode: () => Promise<void>;
@@ -47,6 +50,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   const [prompt, setPrompt] = useState<string>('');
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [previousGeneratedCode, setPreviousGeneratedCode] = useState<string | null>(null);
+  const [futureGeneratedCode, setFutureGeneratedCode] = useState<string[]>([]);
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +62,6 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   const [isRefactoring, setIsRefactoring] = useState<boolean>(false);
   const [refactorError, setRefactorError] = useState<string | null>(null);
 
-  // For Enhancement Feature
   const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
 
@@ -112,11 +115,12 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     setGeneratedCode(null);
     setPreviousGeneratedCode(null);
+    setFutureGeneratedCode([]); // Clear redo stack on new generation
     setRefactoredCode(null);
     setEnhanceError(null);
 
     try {
-      const result: GenerateCodeOutput = await generateCode({ prompt });
+      const result: GenerateCodeOutput = await generateCode({ prompt } as GenerateCodeInput);
       if (result && typeof result.code === 'string') {
         setGeneratedCode(result.code);
         if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- WARNING:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
@@ -154,7 +158,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       const currentCodeToRefactor = generatedCode;
-      const result: RefactorCodeOutput = await refactorCode({ code: currentCodeToRefactor, prompt: refactorPrompt });
+      const result: RefactorCodeOutput = await refactorCode({ code: currentCodeToRefactor, prompt: refactorPrompt } as RefactorCodeInput);
       if (result && typeof result.code === 'string') {
         setRefactoredCode(result.code);
         if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- WARNING:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
@@ -179,6 +183,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     if (refactoredCode && typeof refactoredCode === 'string' && !(refactoredCode.startsWith('<!-- Error:') || refactoredCode.startsWith('<!-- WARNING:') || refactoredCode.startsWith('<!-- CRITICAL_ERROR:'))) {
       setPreviousGeneratedCode(generatedCode);
       setGeneratedCode(refactoredCode);
+      setFutureGeneratedCode([]); // Clear redo stack on applying refactor
       setRefactoredCode(null);
       setRefactorPrompt('');
       setIsRefactorModalOpen(false);
@@ -202,23 +207,23 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
     setIsEnhancing(true);
     setEnhanceError(null);
-    setError(null); // Clear main error
-    setRefactorError(null); // Clear refactor error
+    setError(null); 
+    setRefactorError(null); 
 
     try {
       const currentCodeToEnhance = generatedCode;
       const result: EnhanceCodeOutput = await enhanceCode({
         currentCode: currentCodeToEnhance,
         originalUserPrompt: prompt,
-      });
+      } as EnhanceCodeInput);
 
       if (result && typeof result.enhancedCode === 'string') {
         if (result.enhancedCode.trim() === '' || result.enhancedCode.startsWith('<!-- Error:') || result.enhancedCode.startsWith('<!-- WARNING:') || result.enhancedCode.startsWith('<!-- CRITICAL_ERROR:')) {
           setEnhanceError(result.enhancedCode.trim() === '' ? 'AI returned empty enhanced code.' : result.enhancedCode);
-          // Do not update generatedCode if enhancement returns an error/warning
         } else {
           setPreviousGeneratedCode(currentCodeToEnhance);
           setGeneratedCode(result.enhancedCode);
+          setFutureGeneratedCode([]); // Clear redo stack on successful enhancement
         }
       } else {
         const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_STRUCTURE_FOR_ENHANCED_CODE.';
@@ -236,11 +241,29 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
   const undoRefactor = () => {
     if (previousGeneratedCode !== null) {
+      if (generatedCode !== null) {
+        setFutureGeneratedCode(prev => [generatedCode, ...prev]);
+      }
       setGeneratedCode(previousGeneratedCode);
-      setPreviousGeneratedCode(null);
+      setPreviousGeneratedCode(null); // Or manage a deeper undo stack if needed
       setError(null);
       setRefactorError(null);
       setRefactoredCode(null);
+      setEnhanceError(null);
+    }
+  };
+
+  const redoChange = () => {
+    if (futureGeneratedCode.length > 0) {
+      const nextState = futureGeneratedCode[0];
+      const newFutureStack = futureGeneratedCode.slice(1);
+      if (generatedCode !== null) {
+         setPreviousGeneratedCode(generatedCode);
+      }
+      setGeneratedCode(nextState);
+      setFutureGeneratedCode(newFutureStack);
+      setError(null);
+      setRefactorError(null);
       setEnhanceError(null);
     }
   };
@@ -273,7 +296,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     let newUrlObj: { url: string | null } = { url: null };
     if (generatedCode) {
       const files = parseHtmlString(generatedCode);
-      if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:') && !files[0].content.startsWith('<!-- WARNING:') && !files[0].content.startsWith('<!-- CRITICAL_ERROR:')) {
+      if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:') || files[0].content.startsWith('<!-- WARNING:') || files[0].content.startsWith('<!-- CRITICAL_ERROR:')) {
         try {
           const blob = new Blob([files[0].content], { type: 'text/html' });
           newUrlObj.url = URL.createObjectURL(blob);
@@ -313,6 +336,8 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
         applyRefactor,
         previousGeneratedCode,
         undoRefactor,
+        futureGeneratedCode,
+        redoChange,
         isEnhancing,
         enhanceError,
         handleEnhanceCode,
@@ -330,3 +355,5 @@ export const useCodeContext = (): CodeContextType => {
   }
   return context;
 };
+
+    

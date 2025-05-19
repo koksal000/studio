@@ -5,7 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { useCodeContext } from '@/context/code-context';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Download, Clipboard, Check, Code, FileText, Undo, Pencil, ListCollapse, Sparkles, AlertCircle } from 'lucide-react'; // Added Sparkles, AlertCircle
+import { Download, Clipboard, Check, Code, FileText, Pencil, ListCollapse, AlertCircle } from 'lucide-react'; // Removed Sparkles, Undo
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { RefactorCodeModal } from './refactor-code-modal';
@@ -22,12 +22,9 @@ export function CodeOutput() {
     isLoading,
     error,
     downloadCode,
-    undoRefactor,
-    previousGeneratedCode,
     setIsRefactorModalOpen,
-    handleEnhanceCode, // New context function
-    isEnhancing,       // New context state
-    enhanceError,      // New context state for enhancement errors
+    isEnhancing,       
+    enhanceError,      
   } = useCodeContext();
   const { toast } = useToast();
   const [isCopied, setIsCopied] = useState<boolean>(false);
@@ -59,7 +56,7 @@ export function CodeOutput() {
   };
 
   const renderContent = () => {
-    if (isLoading || isEnhancing) { // Check for isEnhancing as well
+    if (isLoading || isEnhancing) { 
       return (
          <div className="p-4 space-y-4">
            <Skeleton className="h-8 w-1/4" />
@@ -110,7 +107,7 @@ export function CodeOutput() {
 
   return (
     <div className="flex flex-col flex-1 h-1/2 border-b border-border overflow-hidden">
-      <div className="flex items-center justify-between p-3 border-b"> {/* Reduced padding slightly */}
+      <div className="flex items-center justify-between p-3 border-b"> 
          <div className="flex items-center gap-2">
            <Code className="h-5 w-5" />
            <h2 className="text-lg font-semibold">Generated Code (index.html)</h2>
@@ -121,17 +118,7 @@ export function CodeOutput() {
               </Badge>
             )}
          </div>
-         <div className="flex items-center gap-1.5"> {/* Reduced gap slightly */}
-             <Button
-               variant="outline"
-               size="sm"
-               onClick={handleEnhanceCode}
-               disabled={isLoading || isEnhancing || !generatedCode}
-               title="Kodu Geliştir ve Tamamla"
-             >
-               <Sparkles className="mr-2 h-4 w-4" />
-               Geliştir
-             </Button>
+         <div className="flex items-center gap-1.5"> 
              <Button
                variant="outline"
                size="sm"
@@ -153,19 +140,9 @@ export function CodeOutput() {
                Düzenle
              </Button>
              <Button
-               variant="outline"
-               size="sm"
-               onClick={undoRefactor}
-               disabled={isLoading || isEnhancing ||!previousGeneratedCode}
-               title="Undo Last Change"
-             >
-               <Undo className="mr-2 h-4 w-4" />
-               Geri Al
-             </Button>
-             <Button
                variant="ghost"
                size="icon"
-               onClick={() => handleCopy(generatedCode as string)} // Type assertion as generatedCode will exist if button enabled
+               onClick={() => handleCopy(generatedCode as string)} 
                disabled={!generatedCode}
                aria-label="Copy HTML Code"
                title="Copy HTML Code"
@@ -188,3 +165,5 @@ export function CodeOutput() {
     </div>
   );
 }
+
+    
