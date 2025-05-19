@@ -121,7 +121,6 @@ const GenerateCodeInputSchema = z.object({
 });
 export type GenerateCodeInput = z.infer<typeof GenerateCodeInputSchema>;
 
-// Reverted to object schema
 const GenerateCodeOutputSchema = z.object({
   code: z.string().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>, or an HTML comment if explaining failure.'),
 });
@@ -142,9 +141,10 @@ const generateCodePrompt = ai.definePrompt({
     schema: GenerateCodeInputSchema,
   },
   output: {
-    schema: GenerateCodeOutputSchema, // Expecting object
+    schema: GenerateCodeOutputSchema,
   },
-  prompt: `You are an expert web developer tasked with generating comprehensive, visually stunning, and feature-rich web applications based on user prompts.
+  prompt: `You are an expert web developer. Your primary directive is to generate comprehensive, visually stunning, and feature-rich web applications based on user prompts, ALWAYS adhering to the detailed rules and UI/UX guidelines provided below, regardless of the brevity of the user's initial prompt. Your goal is to create complete experiences, not just isolated snippets.
+
 Follow these instructions ABSOLUTELY AND STRICTLY:
 
 1.  **Output Format:** Your response MUST be a JSON object with a single key "code". The value of "code" MUST be a SINGLE, complete HTML file. This file MUST contain all necessary HTML structure, CSS styles (within <style> tags or inline), and JavaScript logic (within <script> tags).
@@ -157,10 +157,12 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
     Do NOT return an empty string or null for the "code" value if you are providing an explanatory comment.
     Otherwise, if you *can* fulfill the request, provide ONLY the complete HTML code within the "code" value of the JSON object.
 
-2.  **Adhere to the 100 Rules:** You MUST follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
+2.  **CRITICAL: Adhere to the 100 Rules:** You MUST ABSOLUTELY follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
     ${HUNDRED_RULES}
-3.  **Interpret the Prompt Broadly & Expand:** Based on the user's prompt, anticipate related features, consider edge cases, and build a comprehensive and functional mini-application or website section within the single HTML file, guided by the 100 rules. Aim to generate substantial, high-quality code.
-4.  **Advanced UI/UX Implementation:** The generated application MUST be visually outstanding and highly interactive. Implement the following advanced UI/UX elements extensively:
+
+3.  **ALWAYS Interpret the Prompt Broadly & Expand SIGNIFICANTLY:** Even if the user's prompt is very short or simple, you MUST anticipate related features, consider edge cases, and build a comprehensive and functional mini-application or website section within the single HTML file, guided by the 100 rules. Your output should ALWAYS be substantial and aim for hundreds, if not thousands, of lines of high-quality code, demonstrating a full interpretation of the user's underlying intent and the 100 rules. Create a full experience.
+
+4.  **MANDATORY: Advanced UI/UX Implementation:** The generated application MUST be visually outstanding and highly interactive. Implement the following advanced UI/UX elements extensively AND WITH GREAT DETAIL:
     *   **Transitions:** Smooth and meaningful transitions for state changes, loading, reveals, etc.
     *   **Advanced Interfaces:** Complex layouts, interactive dashboards, multi-step forms, drag-and-drop interfaces, etc.
     *   **Shadows & Lighting:** Use shadows (box-shadow, text-shadow) and subtle lighting effects to create depth and realism.
@@ -168,16 +170,16 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
     *   **Effective Animations:** Well-chosen animations for user interactions, loading states, and visual appeal. Use CSS animations/transitions and JavaScript where necessary.
     *   **Gradients & Colors:** Utilize beautiful gradients and a rich, harmonious color palette effectively throughout the design.
     *   **Excellent Graphics:** Incorporate visually appealing elements, potentially including placeholders or simple SVG graphics if appropriate, to enhance the overall look.
+
 5.  **Application-Section Complexity:** The final output should resemble a well-developed section of a modern application or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel.
 6.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required.
-7.  **No External Dependencies:** Do not include links to external libraries or frameworks unless explicitly requested and absolutely essential for the core functionality described (even then, prefer vanilla solutions if feasible). If a library like Tailwind is requested, embed the necessary CDN link or provide instructions, but default to inline/embedded styles.
+7.  **No External Dependencies:** Do not include links to external libraries or frameworks unless explicitly requested and absolutely essential for the core functionality described (even then, prefer vanilla solutions if feasible).
 8.  **Completeness:** Ensure the generated HTML code is as complete as possible. Output the *entire* file content for the "code" value, starting with \`<!DOCTYPE html>\`.
 
 User Prompt:
 {{{prompt}}}
 
 Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING HTML, OR HTML COMMENT):`,
-  // Removed safety settings config
 });
 
 const generateCodeFlow = ai.defineFlow(
@@ -192,7 +194,13 @@ const generateCodeFlow = ai.defineFlow(
        const {output} = await generateCodePrompt(input);
        if (!output || !output.code) {
          console.error("[generateCodeFlow] Model response output or output.code is NULL or empty.");
-         return { code: "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_EMPTY_CODE. The AI model provided no content or an invalid structure. -->" };
+         const errorMessage = "CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_EMPTY_CODE. The AI model provided no content or an invalid structure. Please try a simpler prompt or check your API key and model configuration.";
+         return { code: `<!-- ${errorMessage} -->` };
+       }
+       if (output.code.trim() === '' || output.code.startsWith('<!-- Error:') || output.code.startsWith('<!-- Warning:') || output.code.startsWith('<!-- CRITICAL_ERROR:')) {
+            console.warn("[generateCodeFlow] Model returned an error/warning or empty code in the 'code' field:", output.code);
+            // Return the error/warning comment as is, as it might contain useful info from the model
+            return { code: output.code };
        }
        console.log("[generateCodeFlow] Received code from AI (length):", output.code.length);
        return output;
