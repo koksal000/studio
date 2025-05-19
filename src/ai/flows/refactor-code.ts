@@ -55,6 +55,15 @@ const refactorCodePrompt = ai.definePrompt({
   output: { // Expects a JSON object with a "code" property
     schema: RefactorCodeOutputSchema,
   },
+  config: {
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
+    ],
+  },
   prompt: `You are an expert code refactoring agent.
 
 You will be given code and a prompt describing how to refactor the code. Apply the requested changes comprehensively throughout the code, ensuring consistency and maintaining functionality unless the prompt specifies otherwise.
@@ -67,7 +76,7 @@ The "code" value MUST be a single string containing the complete refactored HTML
 
 ABSOLUTELY NO MARKDOWN, NO EXPLANATORY TEXT OUTSIDE THE JSON STRUCTURE. ONLY THE JSON OBJECT.
 
-If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL), you CANNOT generate the refactored HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: Cannot refactor due to X, Y, Z. -->" } or { "code": "<!-- Error: Content refactoring blocked by safety. -->" }). Ensure the original code is NOT included in the error comment itself if you must return an error.
+If, for any reason (such as an overly complex/impossible request that you CANNOT FULFILL), you CANNOT generate the refactored HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: Cannot refactor due to X, Y, Z. -->" }). Ensure the original code is NOT included in the error comment itself if you must return an error.
 
 Original Code:
 \`\`\`html
@@ -103,13 +112,15 @@ const refactorCodeFlow = ai.defineFlow(
 
       if (output.code.startsWith("<!-- Error:") || output.code.startsWith("<!-- CRITICAL_ERROR:") || output.code.startsWith("<!-- WARNING:")) {
          console.warn("[refactorCodeFlow] Refactor resulted in an AI-generated error/warning comment in JSON:", output.code);
+         // Return the error comment directly as it's already in the expected {code: "<!-- ... -->"} format
          return output; 
       }
       
       console.log(`[refactorCodeFlow] Received refactored code from AI (length): ${output.code.length}`);
       return output;
 
-    } catch (error: any) {
+    } catch (error: any)
+     {
       let errorMessage = "Unknown error occurred during refactor code flow.";
       if (error instanceof Error) {
         errorMessage = error.message;
@@ -128,4 +139,3 @@ const refactorCodeFlow = ai.defineFlow(
     }
   }
 );
-

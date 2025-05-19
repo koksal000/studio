@@ -160,6 +160,15 @@ const generateCodePrompt = ai.definePrompt({
   output: { // Expects a JSON object with a "code" property
     schema: GenerateCodeOutputSchema,
   },
+  config: {
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
+    ],
+  },
   prompt: `You are an EXCEPTIONALLY PROACTIVE and CREATIVE expert web developer and AI system designer. Your primary directive is to generate COMPREHENSIVE, VISUALLY STUNNING, and FEATURE-RICH web applications or complete website sections.
 
 Your response MUST BE a JSON object of the following format:
@@ -170,9 +179,9 @@ The "code" value MUST be a single string containing the complete HTML document, 
 
 ABSOLUTELY NO MARKDOWN, NO EXPLANATORY TEXT OUTSIDE THE JSON STRUCTURE. ONLY THE JSON OBJECT.
 
-If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL, or if you believe the request is fundamentally unachievable), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: The request is too complex to fulfill. -->" } or { "code": "<!-- Error: Content generation blocked by safety. -->" }).
+If, for any reason (such as an overly complex/impossible request that you CANNOT FULFILL, or if you believe the request is fundamentally unachievable), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: The request is too complex to fulfill. -->" }). DO NOT mention safety or content blocking in the error message unless it is the absolute only reason.
 
-TARGET OUTPUT LENGTH for the HTML code string: AIM FOR A MINIMUM OF 1000 LINES OF CODE. For any non-trivial request, and even for very short user prompts (e.g., "a button"), you MUST proactively generate a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section (potentially 1000-1500+ lines), demonstrating deep interpretation and proactive feature addition.
+TARGET OUTPUT LENGTH for the HTML code string: AIM FOR A MINIMUM OF 1000-1500 LINES OF CODE. For any non-trivial request, and even for very short user prompts (e.g., "a button"), you MUST proactively generate a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section (potentially 1500-5000+ lines), demonstrating deep interpretation and proactive feature addition.
 
 Follow these instructions ABSOLUTELY AND STRICTLY:
 
@@ -248,4 +257,3 @@ const generateCodeFlow = ai.defineFlow(
     }
   }
 );
-
