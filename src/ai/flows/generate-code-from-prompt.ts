@@ -154,7 +154,7 @@ const generateCodePrompt = ai.definePrompt({
   output: {
     schema: z.string().nullable(), // Model will return string or null
   },
-  config: { // Added safety settings
+  config: {
     safetySettings: [
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -265,5 +265,3 @@ const generateCodeFlow = ai.defineFlow(
     }
   }
 );
-
-    

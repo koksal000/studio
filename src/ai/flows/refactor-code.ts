@@ -50,7 +50,7 @@ const refactorCodePrompt = ai.definePrompt({
   output: {
     schema: z.string().nullable(), // Model will return string or null
   },
-  config: { // Added safety settings
+  config: {
     safetySettings: [
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -96,7 +96,6 @@ const refactorCodeFlow = ai.defineFlow(
 
       if (refactoredHtml === null) {
         console.error("[refactorCodeFlow] CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_FOR_REFACTOR.");
-        // Return original code wrapped in an error comment for context if model fails completely
         return { code: `<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_CODE_FOR_REFACTOR. Original code preserved below. -->\n${input.code}` };
       }
       
@@ -108,17 +107,20 @@ const refactorCodeFlow = ai.defineFlow(
       if (refactoredHtml.startsWith("<!-- Error:") || refactoredHtml.startsWith("<!-- CRITICAL_ERROR:") || refactoredHtml.startsWith("<!-- WARNING:")) {
          console.warn("[refactorCodeFlow] Refactor resulted in an error/warning comment:", refactoredHtml);
          // If AI returns an error comment, pass it through.
-         // If it's just a warning, maybe still return original + warning.
-         // For now, pass through if AI explicitly states an error.
          if (refactoredHtml.startsWith("<!-- Error:") || refactoredHtml.startsWith("<!-- CRITICAL_ERROR:")) {
             return { code: refactoredHtml };
          }
-         // If it's a warning, might be better to return original code + warning.
-         // For simplicity now, just pass it.
+         // For warnings, pass through for now. The context will show it.
          return { code: refactoredHtml };
        }
       
-      console.log("[refactorCodeFlow] Received refactored code from AI (length):", refactoredHtml.length);
+      // Basic validation for HTML structure (can be improved)
+      if (!refactoredHtml.toLowerCase().startsWith('<!doctype html>') || !refactoredHtml.toLowerCase().endsWith('</html>')) {
+        console.warn("[refactorCodeFlow] Final refactored code might be incomplete or not valid HTML. Length:", refactoredHtml.length, "Starts with:", refactoredHtml.substring(0,20), "Ends with:", refactoredHtml.substring(refactoredHtml.length-20));
+        // For refactoring, if the output is malformed, pass it through. User can undo.
+      }
+      
+      console.log(`[refactorCodeFlow] Received refactored code from AI (length): ${refactoredHtml.length}`);
       return { code: refactoredHtml };
 
     } catch (error: any) {
@@ -144,5 +146,3 @@ const refactorCodeFlow = ai.defineFlow(
     }
   }
 );
-
-    
