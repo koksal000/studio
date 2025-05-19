@@ -3,7 +3,7 @@
 
 /**
  * @fileOverview A code generation AI agent based on a prompt.
- * Implements iterative enhancement if the initial code is less than 1000 lines.
+ * Implements iterative enhancement if the initial code is less than a target line count.
  *
  * - generateCode - A function that handles the code generation process.
  * - GenerateCodeInput - The input type for the generateCode function.
@@ -137,7 +137,7 @@ export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>;
 // Schema for the enhancement prompt
 const EnhanceCodeInputSchema = z.object({
   originalPrompt: z.string().describe("The user's original high-level prompt."),
-  existingCode: z.string().describe("The HTML code generated so far that needs enhancement and debugging."),
+  existingCode: z.string().describe("The HTML code generated so far that needs enhancement, expansion, and debugging."),
 });
 export type EnhanceCodeInput = z.infer<typeof EnhanceCodeInputSchema>;
 
@@ -169,43 +169,47 @@ const generateCodePrompt = ai.definePrompt({
   output: {
     schema: GenerateCodeOutputSchema,
   },
-  prompt: `You are an expert web developer. Your primary directive is to generate comprehensive, visually stunning, and feature-rich web applications based on user prompts, ALWAYS adhering to the detailed rules and UI/UX guidelines provided below, regardless of the brevity of the user's initial prompt. Your goal is to create complete experiences, not just isolated snippets. EVEN A VERY SHORT USER PROMPT SHOULD RESULT IN A SUBSTANTIAL, FEATURE-RICH OUTPUT THAT IS HUNDREDS, IF NOT THOUSANDS, OF LINES LONG.
+  prompt: `You are an EXCEPTIONALLY PROACTIVE and CREATIVE expert web developer and AI system designer. Your primary directive is to generate COMPREHENSIVE, VISUALLY STUNNING, and FEATURE-RICH web applications or complete website sections. Your output should be a SINGLE, SELF-CONTAINED HTML FILE with all HTML, CSS (in <style> tags), and JavaScript (in <script> tags) inline.
+
+You are not just a code generator; you are a system architect. Think like an experienced product manager and lead developer. If the user provides a simple prompt like "create a login page," you MUST NOT create just a login form. You MUST envision and build a larger context: an entire settings panel, a user profile page connected to it, a password recovery flow, beautiful welcome animations, error handling modals, perhaps even a small dashboard preview that the login page would lead to. ALWAYS anticipate what the user *really* wants and what would make a complete, impressive application.
+
+**TARGET OUTPUT LENGTH: AIM FOR 3000-5000+ LINES OF CODE for any non-trivial request. Even a very short user prompt (e.g., "a button") should result in a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section, demonstrating deep interpretation and proactive feature addition.**
 
 Follow these instructions ABSOLUTELY AND STRICTLY:
 
-1.  **Output Format:** Your response MUST be a JSON object with a single key "code". The value of "code" MUST be a SINGLE, complete HTML file. This file MUST contain all necessary HTML structure, CSS styles (within <style> tags or inline), and JavaScript logic (within <script> tags).
-    Do NOT generate separate files or use external file references (like <link rel="stylesheet"> or <script src="...">).
+1.  **Output Format (CRITICAL):** Your response MUST be a JSON object with a single key "code". The value of "code" MUST be a SINGLE, complete HTML file. This file MUST contain all necessary HTML structure, CSS styles (within <style> tags or inline), and JavaScript logic (within <script> tags).
     The HTML code value MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`.
-    **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES WITHIN THE "code" VALUE, OTHER THAN THE HTML ITSELF.**
+    **ABSOLUTELY NO EXPLANATORY TEXT, PREAMBLE, MARKDOWN, OR APOLOGIES WITHIN THE "code" VALUE, OTHER THAN THE HTML ITSELF.**
     The very first character of the "code" value must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
 
-    If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: The request is too complex to fulfill. -->\` or \`<!-- Error: Content generation blocked by safety. -->\`).
-    Do NOT return an empty string for the "code" value if you are providing an explanatory comment.
-    If the model generates NULL or EMPTY content for the "code" field, it will be treated as an error.
+    If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL, or if you believe the request is fundamentally unachievable even with iteration), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: The request is too complex to fulfill. -->\` or \`<!-- Error: Content generation blocked by safety. -->\` or \`<!-- Error: Cannot generate the requested application due to inherent limitations. -->\`).
+    Do NOT return an empty string for the "code" value if you are providing an explanatory comment. "code" CANNOT BE NULL OR EMPTY unless it's a genuine failure to generate any valid content.
 
-2.  **CRITICAL: Adhere to the 100 Rules:** You MUST ABSOLUTELY follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
+2.  **CRITICAL: ADHERE TO THE 100 RULES (BELOW) AND EXPAND UPON THEM:** You MUST ABSOLUTELY follow these 100 rules as a MINIMUM baseline. Your goal is to EXCEED these rules, adding even more depth, features, and polish.
     ${HUNDRED_RULES}
 
-3.  **ALWAYS Interpret the Prompt Broadly & Expand SIGNIFICANTLY:** Even if the user's prompt is very short or simple (e.g., "create a button"), you MUST anticipate related features, consider edge cases, and build a comprehensive and functional mini-application or website section within the single HTML file, guided by the 100 rules. Your output should ALWAYS be substantial and aim for hundreds, if not thousands, of lines of high-quality code, demonstrating a full interpretation of the user's underlying intent and the 100 rules. Create a full experience. DO NOT generate short, trivial code snippets.
+3.  **PROACTIVE & COMPREHENSIVE DEVELOPMENT (EXTREMELY IMPORTANT):** Even if the user's prompt is very short or simple (e.g., "create a button"), you MUST anticipate related features, consider edge cases, and build a comprehensive and functional mini-application or website section. Your output should ALWAYS be substantial, aiming for 3000-5000+ lines of high-quality code. Create a full experience. DO NOT generate short, trivial code snippets. Think: what other panels, modals, settings, animations, interactions, and data representations would make this truly impressive and complete? Add them!
 
-4.  **MANDATORY: Advanced UI/UX Implementation:** The generated application MUST be visually outstanding and highly interactive. Implement the following advanced UI/UX elements extensively AND WITH GREAT DETAIL:
-    *   **Transitions:** Smooth and meaningful transitions for state changes, loading, reveals, etc.
-    *   **Advanced Interfaces:** Complex layouts, interactive dashboards, multi-step forms, drag-and-drop interfaces, etc.
-    *   **Shadows & Lighting:** Use shadows (box-shadow, text-shadow) and subtle lighting effects to create depth and realism.
-    *   **Panels & Modals:** Implement well-designed side panels, modals, drawers, and overlays for secondary content or actions.
-    *   **Effective Animations:** Well-chosen animations for user interactions, loading states, and visual appeal. Use CSS animations/transitions and JavaScript where necessary.
-    *   **Gradients & Colors:** Utilize beautiful gradients and a rich, harmonious color palette effectively throughout the design.
-    *   **Excellent Graphics:** Incorporate visually appealing elements, potentially including placeholders or simple SVG graphics if appropriate, to enhance the overall look.
+4.  **MANDATORY: ADVANCED UI/UX & VISUAL EXCELLENCE (REPLIT-LIKE QUALITY):** The generated application MUST be visually outstanding, highly interactive, and feel like a polished, modern product (think Replit, modern dashboards, high-end SaaS applications). Implement the following extensively AND WITH GREAT DETAIL:
+    *   **Fluid Transitions & "Ultra" Animations:** Smooth, meaningful, and delightful transitions and animations for state changes, loading, reveals, user interactions, hover effects, etc. Use CSS animations/transitions and JavaScript where necessary for complex sequences.
+    *   **Advanced Interactive Interfaces:** Complex layouts, interactive dashboards, multi-step forms, drag-and-drop interfaces (if applicable), sortable lists, filterable data displays, real-time updates (simulated if necessary).
+    *   **Sophisticated Shadows, Lighting & Depth:** Use shadows (box-shadow, text-shadow, drop-shadows) and subtle lighting effects (gradients, highlights) to create depth, realism, and a premium feel.
+    *   **Well-Designed Panels, Modals & Drawers:** Implement functional and aesthetically pleasing side panels, modals, drawers, and overlays for secondary content, actions, settings, or detailed views. These should have their own transitions and polished look.
+    *   **Beautiful Gradients & Harmonious Color Palettes:** Utilize beautiful, subtle, and professional gradients and rich, harmonious color palettes effectively throughout the design. Ensure high contrast and readability.
+    *   **Excellent Graphics & Iconography:** Incorporate visually appealing elements. If specific images are not provided, use descriptive placeholders (e.g., from placehold.co or simple SVGs) and ensure they fit the overall aesthetic. Use high-quality icons where appropriate.
 
-5.  **Application-Section Complexity:** The final output should resemble a well-developed section of a modern application or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel.
-6.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required.
-7.  **No External Dependencies:** Do not include links to external libraries or frameworks unless explicitly requested and absolutely essential for the core functionality described (even then, prefer vanilla solutions if feasible).
-8.  **Completeness:** Ensure the generated HTML code is as complete as possible. Output the *entire* file content for the "code" value, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`.
+5.  **Application-Level Complexity:** The final output should resemble a well-developed section of a modern application or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel that provides a complete user journey for the features implemented.
+
+6.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required (e.g., for defer/async scripts or critical render-blocking JS if absolutely necessary, which is rare for this context).
+
+7.  **No External Dependencies (Unless Critical and Inlined):** Do not include links to external libraries or frameworks (like Bootstrap, jQuery, external font files) UNLESS specifically requested. If a small, crucial library is needed (e.g., a charting library for a dashboard), its code should ideally be INLINED within the single HTML file if feasible and not overly large. Prefer vanilla JavaScript solutions.
+
+8.  **Completeness & Robustness:** Ensure the generated HTML code is as complete as possible. Test edge cases in your "mental model" of the app. What happens if a user enters invalid data? What does a loading state look like? What about an empty state? Address these. Output the *entire* file content for the "code" value, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`.
 
 User Prompt:
 {{{prompt}}}
 
-Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING HTML, OR HTML COMMENT EXPLAINING FAILURE. "code" CANNOT BE NULL OR EMPTY):`,
+Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING COMPLETE HTML, OR HTML COMMENT EXPLAINING FAILURE. "code" CANNOT BE NULL OR EMPTY):`,
 });
 
 const enhanceCodePrompt = ai.definePrompt({
@@ -216,9 +220,9 @@ const enhanceCodePrompt = ai.definePrompt({
   output: {
     schema: GenerateCodeOutputSchema, // Same output schema
   },
-  prompt: `You are an expert web developer. You previously generated HTML code based on an original user prompt. The existing code needs to be significantly ENHANCED, EXPANDED, and DEBUGGED to be more comprehensive, feature-rich, and ideally exceed 1000 lines, strictly following the 100 rules and advanced UI/UX guidelines.
+  prompt: `You are an EXCEPTIONALLY PROACTIVE and CREATIVE expert web developer. You previously generated HTML code based on an original user prompt. The "Existing HTML Code" needs to be SIGNIFICANTLY ENHANCED, EXPANDED, DEBUGGED, and POLISHED to be far more comprehensive, feature-rich, visually stunning, and aim to well exceed 3000-5000 lines. You are not just fixing bugs; you are adding substantial new value and features.
 
-Original User Prompt (for context):
+Original User Prompt (for context of the overall goal):
 {{{originalPrompt}}}
 
 Existing HTML Code to Enhance:
@@ -227,16 +231,14 @@ Existing HTML Code to Enhance:
 \`\`\`
 
 Your task is to:
-1.  **EXPAND SIGNIFICANTLY & ENHANCE:** Add **NEW** features, UI elements (panels, modals, interactive components), more content sections, and deeper functionality. Think broadly about what else could be part of this application section based on the original prompt and the existing code. Don't just make small tweaks; aim for substantial additions.
-2.  **DEBUG & REFINE:** Carefully review the "Existing HTML Code" for any bugs, logical errors, typos, or areas for improvement. Fix these issues in the new version you generate. Ensure the code is robust and well-structured.
-3.  **CRITICAL: Adhere to the 100 Rules & Advanced UI/UX:** You MUST ABSOLUTELY re-apply and follow these 100 rules and advanced UI/UX guidelines to ensure comprehensive, high-quality, and user-centric output in the NEW code:
-    ${HUNDRED_RULES}
-    Implement extensively: Transitions, Advanced Interfaces, Shadows & Lighting, Panels & Modals, Effective Animations, Gradients & Colors, Excellent Graphics.
-4.  **INCREASE SCOPE & LINE COUNT:** The goal is to produce a significantly larger and more complete application or website section, aiming for well over 1000 lines of high-quality code.
-5.  **Output Format (STRICT):** Your response MUST be a JSON object with a single key "code". The value of "code" MUST be the ENTIRE, NEW, ENHANCED, and COMPLETE HTML file. Do NOT return only the changes or a diff. The HTML code MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`. No explanatory text outside the "code" value.
-    If you cannot fulfill the enhancement or it results in an error, the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: Cannot enhance further due to complexity. -->\`). "code" CANNOT BE NULL OR EMPTY.
+1.  **DRAMATICALLY EXPAND & ENHANCE (CRITICAL):** Add **MULTIPLE NEW, SUBSTANTIAL FEATURES**, UI elements (e.g., new interactive panels, complex modals, entirely new sections/pages within the single HTML structure, data visualizations, user settings). Think broadly about what else could be part of this application. Don't just make small tweaks; aim for MAJOR ADDITIONS that significantly increase functionality and code length. If the existing code is a simple component, expand it into a full application section.
+2.  **DEBUG & REFINE ROBUSTLY:** Carefully review the "Existing HTML Code" for any bugs, logical errors, typos, performance issues, or areas for UI/UX improvement. Fix these issues thoroughly in the new version you generate. Ensure the code is robust, well-structured, and handles edge cases.
+3.  **CRITICAL: RE-APPLY & EXCEED THE 100 RULES & ADVANCED UI/UX (FROM INITIAL PROMPT):** You MUST ABSOLUTELY re-apply and STRICTLY follow the original 100 rules and advanced UI/UX guidelines (Fluid Transitions, "Ultra" Animations, Advanced Interactive Interfaces, Sophisticated Shadows & Lighting, Well-Designed Panels/Modals, Beautiful Gradients, Excellent Graphics, Application-Level Complexity) to ensure comprehensive, high-quality, and user-centric output in the NEW code. Elevate the existing code to a new level of polish and sophistication.
+4.  **SIGNIFICANTLY INCREASE SCOPE & LINE COUNT:** The primary goal is to produce a significantly larger, more feature-complete, and more polished application or website section, aiming for well over 3000 lines, ideally closer to 5000 lines of high-quality code.
+5.  **Output Format (STRICT):** Your response MUST be a JSON object with a single key "code". The value of "code" MUST be the ENTIRE, NEW, FULLY ENHANCED, and COMPLETE HTML file. Do NOT return only the changes or a diff. The HTML code MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`. No explanatory text outside the "code" value.
+    If you cannot fulfill the enhancement or it results in an error (e.g., safety, complexity), the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: Cannot enhance further due to complexity. Existing code remains the best version. -->\`). "code" CANNOT BE NULL OR EMPTY.
 
-Focus on making the application significantly more robust, feature-complete, and visually stunning than the "Existing HTML Code".
+Focus on making the application significantly more robust, feature-complete, visually stunning, and much longer than the "Existing HTML Code". If the existing code is 500 lines, your output should aim for 1500-3000+ lines. If it's 1500, aim for 3000-5000+.
 
 Generated JSON (SINGLE JSON OBJECT WITH "code" KEY CONTAINING THE FULLY ENHANCED HTML, OR HTML COMMENT. "code" CANNOT BE NULL OR EMPTY):`,
 });
@@ -251,10 +253,11 @@ const generateCodeFlow = ai.defineFlow(
   async (input): Promise<GenerateCodeOutput> => {
     console.log("[generateCodeFlow] Starting code generation. User prompt:", input.prompt);
 
-    const MAX_ITERATIONS = 5;
-    const MIN_TARGET_LINES = 1000;
+    const MAX_ITERATIONS = 5; // Max 5 attempts to enhance
+    const MIN_TARGET_LINES = 3000; // Target 3000 lines
     let currentCode: string | null = null;
     let iteration = 0;
+    let lastSuccessfulCode: string | null = null; // Keep track of the last valid code
 
     try {
       // Initial Code Generation
@@ -263,14 +266,15 @@ const generateCodeFlow = ai.defineFlow(
       currentCode = initialResult?.output?.code ?? null;
       
       if (currentCode === null || currentCode === undefined) {
-        console.error("[generateCodeFlow] Initial generation returned null or undefined code.");
-        return { code: "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_UNDEFINED_ON_INITIAL_GENERATION. -->" };
+        console.error("[generateCodeFlow] CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_UNDEFINED_ON_INITIAL_GENERATION.");
+        return { code: "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_UNDEFINED_ON_INITIAL_GENERATION. Please check API key and model availability. -->" };
       }
       if (currentCode.startsWith("<!-- Error") || currentCode.startsWith("<!-- CRITICAL_ERROR") || currentCode.trim() === "") {
          console.warn("[generateCodeFlow] Initial generation resulted in an error comment or empty code:", currentCode);
          return { code: currentCode || "<!-- CRITICAL_ERROR: Initial generation was empty. -->" };
       }
       console.log(`[generateCodeFlow] Initial generation: ${countLines(currentCode)} lines. Code length: ${currentCode.length}`);
+      lastSuccessfulCode = currentCode;
 
       // Iterative Enhancement Loop
       while (countLines(currentCode) < MIN_TARGET_LINES && iteration < MAX_ITERATIONS) {
@@ -279,50 +283,64 @@ const generateCodeFlow = ai.defineFlow(
 
         const enhanceInput: EnhanceCodeInput = {
           originalPrompt: input.prompt,
-          existingCode: currentCode,
+          existingCode: currentCode, // Pass the current code for enhancement
         };
 
         const enhancementResult = await enhanceCodePrompt(enhanceInput);
         const enhancedCode = enhancementResult?.output?.code ?? null;
 
         if (enhancedCode === null || enhancedCode === undefined) {
-          console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} returned null or undefined code. Using code from previous step.`);
+          console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} returned null or undefined code. Using code from previous successful step: ${countLines(lastSuccessfulCode)} lines.`);
+          currentCode = lastSuccessfulCode; // Revert to last known good code
           break; 
         }
         
         if (enhancedCode.startsWith("<!-- Error") || enhancedCode.startsWith("<!-- CRITICAL_ERROR") || enhancedCode.trim() === "") {
             console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} resulted in an error comment or empty code:`, enhancedCode);
-            currentCode = enhancedCode || `<!-- CRITICAL_ERROR: Enhancement iteration ${iteration} was empty. -->`;
+            // If enhancement fails with an error, it's better to return the last successful code
+            // instead of the error comment from enhancement, unless the error is critical.
+            if (enhancedCode.startsWith("<!-- CRITICAL_ERROR")) {
+                currentCode = enhancedCode;
+            } else {
+                 console.warn(`[generateCodeFlow] Enhancement failed with a non-critical error. Reverting to last successful code: ${countLines(lastSuccessfulCode)} lines.`);
+                 currentCode = lastSuccessfulCode;
+            }
             break; 
         }
         
-        if (countLines(enhancedCode) < countLines(currentCode) && countLines(currentCode) > 0) {
-            console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} produced shorter code (${countLines(enhancedCode)} lines vs ${countLines(currentCode)}). Keeping previous version.`);
-            // Optionally, we could break here if we don't want to risk regression.
-            // For now, we'll proceed with the (potentially shorter) enhanced code if it's not an error.
+        // Only update if the new code is genuinely longer and seems valid
+        if (countLines(enhancedCode) > countLines(currentCode)) {
+            console.log(`[generateCodeFlow] Iteration ${iteration} successfully enhanced code to ${countLines(enhancedCode)} lines.`);
+            currentCode = enhancedCode;
+            lastSuccessfulCode = currentCode; // Update last successful code
+        } else {
+            console.warn(`[generateCodeFlow] Enhancement iteration ${iteration} did not increase line count (${countLines(enhancedCode)} vs ${countLines(currentCode)}). Keeping previous version.`);
+            // No need to break, currentCode remains the longer version.
         }
-
-        currentCode = enhancedCode;
         console.log(`[generateCodeFlow] Iteration ${iteration} result: ${countLines(currentCode)} lines. Code length: ${currentCode.length}`);
       }
 
       if (iteration === MAX_ITERATIONS && countLines(currentCode) < MIN_TARGET_LINES) {
-        console.warn(`[generateCodeFlow] Max iterations reached, but code is still ${countLines(currentCode)} lines (target: ${MIN_TARGET_LINES}).`);
+        console.warn(`[generateCodeFlow] Max iterations (${MAX_ITERATIONS}) reached, but code is still ${countLines(currentCode)} lines (target: ${MIN_TARGET_LINES}). Returning the best version achieved.`);
       }
       
       if (currentCode === null || currentCode === undefined) {
-        return { code: "<!-- CRITICAL_ERROR: Code became null or undefined during processing. -->" };
+         console.error("[generateCodeFlow] CRITICAL_ERROR: Code became null or undefined during processing. This should not happen.");
+        return { code: "<!-- CRITICAL_ERROR: Code became null or undefined during processing. Please report this bug. -->" };
       }
        if (!currentCode.toLowerCase().startsWith('<!doctype html>') || !currentCode.toLowerCase().endsWith('</html>')) {
            if (!currentCode.startsWith("<!-- Error") && !currentCode.startsWith("<!-- CRITICAL_ERROR")) {
-             console.warn("[generateCodeFlow] Final generated code might be incomplete or not valid HTML. Length:", currentCode.length);
+             console.warn("[generateCodeFlow] Final generated code might be incomplete or not valid HTML. Length:", currentCode.length, "Starts with:", currentCode.substring(0,20), "Ends with:", currentCode.substring(currentCode.length-20));
+             // Optionally, wrap in comments if it's not an error comment itself.
+             // currentCode = `<!-- WARNING: Final code might be malformed. Original content preserved. -->\n${currentCode}`;
            }
        }
 
+      console.log(`[generateCodeFlow] Final code output: ${countLines(currentCode)} lines. Code length: ${currentCode.length}`);
       return { code: currentCode };
 
     } catch (error: any) {
-      let errorMessage = "Unknown error occurred during code generation flow.";
+      let errorMessage = "Unknown error occurred during code generation flow's main try-catch.";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === 'string') {
@@ -332,7 +350,7 @@ const generateCodeFlow = ai.defineFlow(
           errorMessage = JSON.stringify(error);
         } catch (e) { /* ignore stringify error */ }
       }
-      console.error("[generateCodeFlow] Critical error in flow's main try-catch:", errorMessage, error);
+      console.error("[generateCodeFlow] Critical error in flow's main try-catch:", errorMessage, error.stack);
       return { code: `<!-- ERROR_DURING_CODE_GENERATION_FLOW_MAIN_CATCH: ${errorMessage.replace(/-->/g, '--&gt;')} -->` };
     }
   }
