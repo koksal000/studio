@@ -15,7 +15,7 @@ export interface GeneratedFile {
 interface CodeContextType {
   prompt: string;
   setPrompt: (prompt: string) => void;
-  generatedCode: string | null; // Stores the HTML string directly
+  generatedCode: string | null;
   generatedFiles: GeneratedFile[];
   isLoading: boolean;
   error: string | null;
@@ -28,7 +28,7 @@ interface CodeContextType {
   setIsRefactorModalOpen: (isOpen: boolean) => void;
   refactorPrompt: string;
   setRefactorPrompt: (prompt: string) => void;
-  refactoredCode: string | null; // Stores the refactored HTML string directly
+  refactoredCode: string | null;
   isRefactoring: boolean;
   refactorError: string | null;
   handleRefactorCode: () => Promise<void>;
@@ -50,7 +50,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
   const [isRefactorModalOpen, setIsRefactorModalOpen] = useState<boolean>(false);
   const [refactorPrompt, setRefactorPrompt] = useState<string>('');
-  const [refactoredCode, setRefactoredCode] = useState<string | null>(null); // Stores the proposed refactored HTML string
+  const [refactoredCode, setRefactoredCode] = useState<string | null>(null);
   const [isRefactoring, setIsRefactoring] = useState<boolean>(false);
   const [refactorError, setRefactorError] = useState<string | null>(null);
 
@@ -62,36 +62,40 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
+    // This effect handles updating previewUrl and generatedFiles whenever generatedCode changes.
+    // It also cleans up old blob URLs.
+    let newPreviewUrl: string | null = null;
+    if (generatedCode) {
+      const files = parseHtmlString(generatedCode);
+      setGeneratedFiles(files);
+      if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:')) {
+        try {
+          const blob = new Blob([files[0].content], { type: 'text/html' });
+          newPreviewUrl = URL.createObjectURL(blob);
+        } catch (e) {
+          console.error("Error creating blob for preview (useEffect generatedCode):", e);
+          setError("Could not create preview from the generated content.");
+        }
+      }
+    } else {
+      setGeneratedFiles([]);
+    }
+
     setPreviewUrl(currentOldUrl => {
       if (currentOldUrl) {
         URL.revokeObjectURL(currentOldUrl);
       }
-
-      if (!generatedCode) {
-        setGeneratedFiles([]);
-        return null;
-      }
-
-      const files = parseHtmlString(generatedCode); // Use parseHtmlString
-      setGeneratedFiles(files);
-
-      if (files.length === 0 || !files[0].content) {
-        return null;
-      }
-
-      const htmlFile = files[0];
-      try {
-        const blob = new Blob([htmlFile.content], { type: 'text/html' });
-        return URL.createObjectURL(blob);
-      } catch (e) {
-        console.error("Error creating blob for preview (useEffect generatedCode):", e);
-        setError("Could not create preview from the generated content.");
-        return null;
-      }
+      return newPreviewUrl;
     });
-  }, [generatedCode, parseHtmlString, setError]);
 
+    // This cleanup function will run when the component unmounts or before the effect runs again.
+    // However, since newPreviewUrl is local to this effect, direct cleanup here is tricky.
+    // The cleanup of newPreviewUrl if it's not set to previewUrl state is handled by the nature of it being a local variable.
+    // The cleanup of the `previewUrl` state variable is handled when it's replaced or on unmount.
 
+  }, [generatedCode, parseHtmlString]);
+
+  // Effect for cleaning up the previewUrl on component unmount
   useEffect(() => {
     const urlToCleanOnUnmount = previewUrl;
     return () => {
@@ -100,6 +104,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       }
     };
   }, [previewUrl]);
+
 
   const handleGenerateCode = async () => {
     if (!prompt) {
@@ -110,16 +115,17 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     setGeneratedCode(null);
     setPreviousGeneratedCode(null);
+    setRefactoredCode(null);
 
     try {
-      const result: GenerateCodeOutput = await generateCode({ prompt }); // Expects { code: string }
-      if (result && result.code) {
+      const result: GenerateCodeOutput = await generateCode({ prompt });
+      if (result && typeof result.code === 'string') {
         setGeneratedCode(result.code);
         if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- Warning:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
              setError(result.code.trim() === '' ? 'AI returned empty content.' : result.code);
         }
       } else {
-        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_EMPTY_CODE. The AI model itself provided no content or an invalid structure.';
+        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY. The AI model itself provided no content or an invalid structure.';
         setError(nullErrorMsg);
         setGeneratedCode(`<!-- ${nullErrorMsg} (handled in context) -->`);
       }
@@ -127,7 +133,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       console.error('Error in handleGenerateCode:', err);
       const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
       setError(errorMessage);
-      setGeneratedCode(`<!-- Context Error: ${errorMessage} -->`);
+      setGeneratedCode(`<!-- Context Error: ${errorMessage.replace(/-->/g, '--&gt;')} -->`);
     } finally {
       setIsLoading(false);
     }
@@ -148,22 +154,23 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setRefactoredCode(null);
 
     try {
-      const result: RefactorCodeOutput = await refactorCode({ code: generatedCode, prompt: refactorPrompt }); // Expects { code: string }
-      if (result && result.code) {
+      const currentGeneratedCode = generatedCode; // Capture current generatedCode
+      const result: RefactorCodeOutput = await refactorCode({ code: currentGeneratedCode, prompt: refactorPrompt });
+      if (result && typeof result.code === 'string') {
         setRefactoredCode(result.code);
          if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- Warning:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
             setRefactorError(result.code.trim() === '' ? 'AI returned empty refactored code.' : result.code);
         }
       } else {
-        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_EMPTY_CODE_FOR_REFACTOR. The AI model provided no content or an invalid structure for refactoring.';
+        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY_FOR_REFACTOR. The AI model provided no content or an invalid structure for refactoring.';
         setRefactorError(nullErrorMsg);
-        setRefactoredCode(`<!-- ${nullErrorMsg} (handled in context) -->\n${generatedCode}`);
+        setRefactoredCode(`<!-- ${nullErrorMsg} (handled in context) -->\n${currentGeneratedCode || ''}`);
       }
     } catch (err) {
       console.error('Error in handleRefactorCode:', err);
       const errorMessage = `Failed to refactor code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
       setRefactorError(errorMessage);
-      setRefactoredCode(`<!-- Context Error during refactor: ${errorMessage} -->\n${generatedCode}`);
+      setRefactoredCode(`<!-- Context Error during refactor: ${errorMessage.replace(/-->/g, '--&gt;')} -->\n${generatedCode || ''}`);
     } finally {
       setIsRefactoring(false);
     }
@@ -188,6 +195,8 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setGeneratedCode(previousGeneratedCode);
       setPreviousGeneratedCode(null);
       setError(null);
+      setRefactorError(null);
+      setRefactoredCode(null);
     }
   };
 
@@ -195,6 +204,10 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     if (!generatedCode || typeof generatedCode !== 'string' || generatedCode.trim() === '') {
       setError('No valid code generated to download.');
       return;
+    }
+    if (generatedCode.startsWith('<!-- Error:') || generatedCode.startsWith('<!-- Warning:') || generatedCode.startsWith('<!-- CRITICAL_ERROR:')) {
+        setError('Cannot download code containing errors.');
+        return;
     }
     try {
       const blob = new Blob([generatedCode], { type: 'text/html' });
@@ -212,27 +225,38 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePreview = useCallback(() => {
-    setPreviewUrl(currentOldUrl => {
-      if (currentOldUrl) {
-        URL.revokeObjectURL(currentOldUrl);
+    // This function is primarily for the refresh button.
+    // The main preview update logic is in the useEffect hook listening to generatedCode.
+    if (generatedCode) {
+      const files = parseHtmlString(generatedCode);
+      if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:')) {
+        try {
+          const blob = new Blob([files[0].content], { type: 'text/html' });
+          const newUrl = URL.createObjectURL(blob);
+          setPreviewUrl(oldUrl => {
+            if (oldUrl) URL.revokeObjectURL(oldUrl);
+            return newUrl;
+          });
+        } catch (e) {
+          console.error("Error creating blob for preview (updatePreview):", e);
+          setError("Could not create preview from the generated content.");
+           setPreviewUrl(oldUrl => {
+            if (oldUrl) URL.revokeObjectURL(oldUrl);
+            return null;
+          });
+        }
+      } else {
+        setPreviewUrl(oldUrl => {
+          if (oldUrl) URL.revokeObjectURL(oldUrl);
+          return null;
+        });
       }
-      if (!generatedCode) {
+    } else {
+       setPreviewUrl(oldUrl => {
+        if (oldUrl) URL.revokeObjectURL(oldUrl);
         return null;
-      }
-      const files = parseHtmlString(generatedCode); // Use parseHtmlString
-      if (files.length === 0 || !files[0].content) {
-        return null;
-      }
-      const htmlFile = files[0];
-      try {
-        const blob = new Blob([htmlFile.content], { type: 'text/html' });
-        return URL.createObjectURL(blob);
-      } catch (e) {
-        console.error("Error creating blob for preview (updatePreview):", e);
-        setError("Could not create preview from the generated content.");
-        return null;
-      }
-    });
+      });
+    }
   }, [generatedCode, parseHtmlString, setError]);
 
 

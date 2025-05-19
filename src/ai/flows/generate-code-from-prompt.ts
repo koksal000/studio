@@ -122,14 +122,20 @@ const GenerateCodeInputSchema = z.object({
 export type GenerateCodeInput = z.infer<typeof GenerateCodeInputSchema>;
 
 const GenerateCodeOutputSchema = z.object({
-  code: z.string().nullable().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>, or null/HTML comment if explaining failure.'),
+  code: z.string().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>.'),
 });
 export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>;
 
 
 export async function generateCode(input: GenerateCodeInput): Promise<GenerateCodeOutput> {
   try {
-    return await generateCodeFlow(input);
+    const result = await generateCodeFlow(input);
+    // Ensure result and result.code are valid strings before returning
+    if (!result || typeof result.code !== 'string') {
+      console.error("[generateCode export] AI model returned null or invalid structure for code. Result was:", result);
+      return { code: "<!-- Error: AI model returned null or invalid structure for code property. -->" };
+    }
+    return result;
   } catch (error: any) {
     console.error("[generateCode export] Critical error in generateCode flow export:", error);
     let errorMessage = "Unknown error in generateCode export.";
@@ -151,39 +157,32 @@ const generateCodePrompt = ai.definePrompt({
   input: {
     schema: GenerateCodeInputSchema,
   },
-  output: {
-    schema: z.string().nullable(), // Model will return string or null
+  output: { // Expects a JSON object with a "code" property
+    schema: GenerateCodeOutputSchema,
   },
-  config: {
-    safetySettings: [
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-    ],
-  },
-  prompt: `You are an EXCEPTIONALLY PROACTIVE and CREATIVE expert web developer and AI system designer. Your primary directive is to generate COMPREHENSIVE, VISUALLY STUNNING, and FEATURE-RICH web applications or complete website sections. Your output should be a SINGLE, SELF-CONTAINED HTML FILE with all HTML, CSS (in <style> tags), and JavaScript (in <script> tags) inline.
+  // Removed permissiveSafetySettings to revert to previous state
+  prompt: `You are an EXCEPTIONALLY PROACTIVE and CREATIVE expert web developer and AI system designer. Your primary directive is to generate COMPREHENSIVE, VISUALLY STUNNING, and FEATURE-RICH web applications or complete website sections.
 
-You are not just a code generator; you are a system architect. Think like an experienced product manager and lead developer. If the user provides a simple prompt like "create a login page," you MUST NOT create just a login form. You MUST envision and build a larger context: an entire settings panel, a user profile page connected to it, a password recovery flow, beautiful welcome animations, error handling modals, perhaps even a small dashboard preview that the login page would lead to. ALWAYS anticipate what the user *really* wants and what would make a complete, impressive application.
+Your response MUST BE a JSON object of the following format:
+{
+  "code": "YOUR_ENTIRE_SELF_CONTAINED_HTML_CODE_HERE"
+}
+The "code" value MUST be a single string containing the complete HTML document, starting with <!DOCTYPE html> and ending with </html>. ALL HTML, CSS (in <style> tags), and JavaScript (in <script> tags) MUST be inline within this single HTML string.
 
-**TARGET OUTPUT LENGTH: AIM FOR 3000-5000+ LINES OF CODE for any non-trivial request. Even a very short user prompt (e.g., "a button") should result in a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section, demonstrating deep interpretation and proactive feature addition.**
+ABSOLUTELY NO MARKDOWN, NO EXPLANATORY TEXT OUTSIDE THE JSON STRUCTURE. ONLY THE JSON OBJECT.
+
+If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL, or if you believe the request is fundamentally unachievable), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: The request is too complex to fulfill. -->" } or { "code": "<!-- Error: Content generation blocked by safety. -->" }).
+
+TARGET OUTPUT LENGTH for the HTML code string: AIM FOR 500-1500+ LINES OF CODE for any non-trivial request. Even a very short user prompt (e.g., "a button") should result in a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section, demonstrating deep interpretation and proactive feature addition.
 
 Follow these instructions ABSOLUTELY AND STRICTLY:
 
-1.  **Output Format (CRITICAL):** Your response MUST be the HTML code itself as a PLAIN STRING.
-    **ABSOLUTELY NO JSON WRAPPING, NO MARKDOWN, NO EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES. ONLY THE RAW HTML CODE.**
-    The HTML code value MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`.
-    The very first character of your response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
-
-    If, for any reason (such as safety constraints or an overly complex/impossible request that you CANNOT FULFILL, or if you believe the request is fundamentally unachievable), you CANNOT generate the complete HTML code as requested, then your response MUST be a single HTML comment EXPLAINING THE REASON (e.g., \`<!-- Error: The request is too complex to fulfill. -->\` or \`<!-- Error: Content generation blocked by safety. -->\` or \`<!-- Error: Cannot generate the requested application due to inherent limitations. -->\`).
-    Do NOT return an empty string if you are providing an explanatory comment. Your response CANNOT BE NULL OR EMPTY unless it's a genuine failure to generate any valid content.
-
-2.  **CRITICAL: ADHERE TO THE 100 RULES (BELOW) AND EXPAND UPON THEM:** You MUST ABSOLUTELY follow these 100 rules as a MINIMUM baseline. Your goal is to EXCEED these rules, adding even more depth, features, and polish.
+1.  **CRITICAL: ADHERE TO THE 100 RULES (BELOW) AND EXPAND UPON THEM:** You MUST ABSOLUTELY follow these 100 rules as a MINIMUM baseline. Your goal is to EXCEED these rules, adding even more depth, features, and polish.
     ${HUNDRED_RULES}
 
-3.  **PROACTIVE & COMPREHENSIVE DEVELOPMENT (EXTREMELY IMPORTANT):** Even if the user's prompt is very short or simple (e.g., "create a button"), you MUST anticipate related features, consider edge cases, and build a comprehensive and functional mini-application or website section. Your output should ALWAYS be substantial, aiming for 3000-5000+ lines of high-quality code. Create a full experience. DO NOT generate short, trivial code snippets. Think: what other panels, modals, settings, animations, interactions, and data representations would make this truly impressive and complete? Add them!
+2.  **PROACTIVE & COMPREHENSIVE DEVELOPMENT (EXTREMELY IMPORTANT):** Even if the user's prompt is very short or simple (e.g., "create a button"), you MUST anticipate related features, consider edge cases, and build a comprehensive and functional mini-application or website section. Your output should ALWAYS be substantial. Create a full experience. DO NOT generate short, trivial code snippets. Think: what other panels, modals, settings, animations, interactions, and data representations would make this truly impressive and complete? Add them!
 
-4.  **MANDATORY: ADVANCED UI/UX & VISUAL EXCELLENCE (REPLIT-LIKE QUALITY):** The generated application MUST be visually outstanding, highly interactive, and feel like a polished, modern product (think Replit, modern dashboards, high-end SaaS applications). Implement the following extensively AND WITH GREAT DETAIL:
+3.  **MANDATORY: ADVANCED UI/UX & VISUAL EXCELLENCE (REPLIT-LIKE QUALITY):** The generated application MUST be visually outstanding, highly interactive, and feel like a polished, modern product (think Replit, modern dashboards, high-end SaaS applications). Implement the following extensively AND WITH GREAT DETAIL:
     *   **Fluid Transitions & "Ultra" Animations:** Smooth, meaningful, and delightful transitions and animations for state changes, loading, reveals, user interactions, hover effects, etc. Use CSS animations/transitions and JavaScript where necessary for complex sequences.
     *   **Advanced Interactive Interfaces:** Complex layouts, interactive dashboards, multi-step forms, drag-and-drop interfaces (if applicable), sortable lists, filterable data displays, real-time updates (simulated if necessary).
     *   **Sophisticated Shadows, Lighting & Depth:** Use shadows (box-shadow, text-shadow, drop-shadows) and subtle lighting effects (gradients, highlights) to create depth, realism, and a premium feel.
@@ -191,18 +190,18 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
     *   **Beautiful Gradients & Harmonious Color Palettes:** Utilize beautiful, subtle, and professional gradients and rich, harmonious color palettes effectively throughout the design. Ensure high contrast and readability.
     *   **Excellent Graphics & Iconography:** Incorporate visually appealing elements. If specific images are not provided, use descriptive placeholders (e.g., from placehold.co or simple SVGs) and ensure they fit the overall aesthetic. Use high-quality icons where appropriate.
 
-5.  **Application-Level Complexity:** The final output should resemble a well-developed section of a modern application or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel that provides a complete user journey for the features implemented.
+4.  **Application-Level Complexity:** The final output should resemble a well-developed section of a modern application or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel that provides a complete user journey for the features implemented.
 
-6.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required (e.g., for defer/async scripts or critical render-blocking JS if absolutely necessary, which is rare for this context).
+5.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required.
 
-7.  **No External Dependencies (Unless Critical and Inlined):** Do not include links to external libraries or frameworks (like Bootstrap, jQuery, external font files) UNLESS specifically requested. If a small, crucial library is needed (e.g., a charting library for a dashboard), its code should ideally be INLINED within the single HTML file if feasible and not overly large. Prefer vanilla JavaScript solutions.
+6.  **No External Dependencies (Unless Critical and Inlined):** Do not include links to external libraries or frameworks. Prefer vanilla JavaScript solutions.
 
-8.  **Completeness & Robustness:** Ensure the generated HTML code is as complete as possible. Test edge cases in your "mental model" of the app. What happens if a user enters invalid data? What does a loading state look like? What about an empty state? Address these. Output the *entire* file content, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`.
+7.  **Completeness & Robustness:** Ensure the generated HTML code for the "code" value is as complete as possible. Test edge cases in your "mental model" of the app. What happens if a user enters invalid data? What does a loading state look like? What about an empty state? Address these. Output the *entire* file content, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`.
 
 User Prompt:
 {{{prompt}}}
 
-Generated HTML (PLAIN STRING - COMPLETE HTML CODE ONLY, OR HTML COMMENT EXPLAINING FAILURE. RESPONSE CANNOT BE NULL OR EMPTY):`,
+JSON Response (ONLY THE JSON OBJECT):`,
 });
 
 
@@ -210,41 +209,26 @@ const generateCodeFlow = ai.defineFlow(
   {
     name: 'generateCodeFlow',
     inputSchema: GenerateCodeInputSchema,
-    outputSchema: GenerateCodeOutputSchema, // Expects { code: string | null }
+    outputSchema: GenerateCodeOutputSchema, // Expects { code: string }
   },
   async (input): Promise<GenerateCodeOutput> => {
-    console.log("[generateCodeFlow] Starting code generation (single attempt). User prompt:", input.prompt);
-    let generatedHtml: string | null = null;
-
+    console.log("[generateCodeFlow] Starting code generation (single attempt, JSON output). User prompt:", input.prompt);
+    
     try {
-      const result = await generateCodePrompt(input); // Returns string | null
-      generatedHtml = result ?? null;
+      const { output } = await generateCodePrompt(input); // output is GenerateCodeOutputSchema based on definition
       
-      if (generatedHtml === null) {
-        console.error("[generateCodeFlow] CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_ON_GENERATION. This means the model provided no content at all.");
-        return { code: "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_ON_GENERATION. Please check API key, model availability, or prompt complexity. -->" };
+      if (!output || typeof output.code !== 'string') {
+        console.error("[generateCodeFlow] CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_STRUCTURE_FOR_CODE_PROPERTY. Output was:", output);
+        return { code: "<!-- CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_STRUCTURE_FOR_CODE_PROPERTY in JSON response. -->" };
       }
 
-      if (generatedHtml.trim() === "") {
-        console.warn("[generateCodeFlow] AI returned an empty string. Treating as an error.");
-        return { code: "<!-- WARNING: AI_MODEL_RETURNED_EMPTY_STRING. -->" };
+      if (output.code.trim() === "") {
+        console.warn("[generateCodeFlow] AI returned an empty string for the 'code' property. Treating as an error.");
+        return { code: "<!-- WARNING: AI_MODEL_RETURNED_EMPTY_STRING_FOR_CODE_PROPERTY. -->" };
       }
       
-      // Check if it's an error comment from the model itself
-      if (generatedHtml.startsWith("<!-- Error:") || generatedHtml.startsWith("<!-- CRITICAL_ERROR:") || generatedHtml.startsWith("<!-- WARNING:")) {
-         console.warn("[generateCodeFlow] AI returned an error/warning comment:", generatedHtml);
-         return { code: generatedHtml };
-      }
-
-      // Basic validation for HTML structure (can be improved)
-      if (!generatedHtml.toLowerCase().startsWith('<!doctype html>') || !generatedHtml.toLowerCase().endsWith('</html>')) {
-        console.warn("[generateCodeFlow] Final generated code might be incomplete or not valid HTML. Length:", generatedHtml.length, "Starts with:", generatedHtml.substring(0,20), "Ends with:", generatedHtml.substring(generatedHtml.length-20));
-        // Optionally, wrap in comments if it's not an error comment itself.
-        // return { code: `<!-- WARNING: Final code might be malformed. Original content preserved. -->\n${generatedHtml}` };
-      }
-      
-      console.log(`[generateCodeFlow] Single attempt generation successful. Code length: ${generatedHtml.length}, Lines: ${generatedHtml.split('\n').length}`);
-      return { code: generatedHtml };
+      console.log(`[generateCodeFlow] Single attempt JSON generation successful. Code length: ${output.code.length}, Lines: ${output.code.split('\n').length}`);
+      return output;
 
     } catch (error: any) {
       let errorMessage = "Unknown error occurred during code generation flow's main try-catch.";

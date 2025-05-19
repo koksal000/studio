@@ -13,6 +13,5 @@ export const ai = genkit({
       },
     }),
   ],
-  model: 'googleai/gemini-2.0-flash', // Using the specified gemini-2.0-flash
+  model: 'googleai/gemini-2.0-flash-exp', // Reverted to gemini-2.0-flash-exp
 });
-
