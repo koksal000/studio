@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -5,11 +6,21 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useCodeContext } from '@/context/code-context';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Activity } from 'lucide-react';
 import { ScrollArea } from './ui/scroll-area';
 
 export function CodeInput() {
-  const { prompt, setPrompt, handleGenerateCode, isLoading, error } = useCodeContext();
+  const {
+    prompt,
+    setPrompt,
+    handleGenerateCode,
+    isLoading,
+    error,
+    isTestingApi,
+    testApiResponse,
+    testApiError,
+    handleTestApiConnection,
+  } = useCodeContext();
 
   const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setPrompt(event.target.value);
@@ -37,8 +48,8 @@ export function CodeInput() {
            placeholder="Describe the code you want to generate (e.g., 'Create a React button component with primary and secondary variants using Tailwind CSS')..."
            value={prompt}
            onChange={handleInputChange}
-           onKeyDown={handleKeyDown} // Add keydown listener
-           className="min-h-[200px] flex-1 resize-none text-base" // Use text-base for better readability
+           onKeyDown={handleKeyDown}
+           className="min-h-[200px] flex-1 resize-none text-base"
            aria-label="Code generation prompt"
          />
       </ScrollArea>
@@ -51,8 +62,8 @@ export function CodeInput() {
       <Button
         onClick={handleGenerateCode}
         disabled={isLoading || !prompt.trim()}
-        className="w-full transition-all duration-200" // Add transition
-        aria-live="polite" // Announce loading state changes
+        className="w-full transition-all duration-200"
+        aria-live="polite"
       >
         {isLoading ? (
           <>
@@ -63,6 +74,45 @@ export function CodeInput() {
           'Generate Code'
         )}
       </Button>
+
+      {/* Test API Button and Display Area */}
+      <div className="mt-4 border-t pt-4 space-y-2">
+        <Label className="text-sm font-medium text-muted-foreground">API Test Section</Label>
+        <Button
+          variant="outline"
+          onClick={handleTestApiConnection}
+          disabled={isTestingApi}
+          className="w-full"
+          aria-live="polite"
+        >
+          {isTestingApi ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Testing API...
+            </>
+          ) : (
+            <>
+              <Activity className="mr-2 h-4 w-4" />
+              Test API Connection (Merhaba)
+            </>
+          )}
+        </Button>
+        {testApiResponse && (
+          <div className="text-sm p-3 bg-green-500/10 text-green-700 rounded-md shadow">
+            <strong>Test API Yanıtı:</strong>
+            <pre className="mt-1 whitespace-pre-wrap break-all bg-green-500/5 p-2 rounded text-xs">{testApiResponse}</pre>
+          </div>
+        )}
+        {testApiError && (
+          <div className="flex items-start text-destructive text-sm p-3 bg-destructive/10 rounded-md shadow">
+            <AlertCircle className="h-4 w-4 mr-2 shrink-0 mt-0.5" />
+            <div>
+                <strong>Test API Hatası:</strong>
+                <p className="mt-1 text-xs">{testApiError}</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
