@@ -20,9 +20,8 @@ const RefactorCodeInputSchema = z.object({
 });
 export type RefactorCodeInput = z.infer<typeof RefactorCodeInputSchema>;
 
-// Output is now a direct string for the refactored HTML code, or null
-const RefactorCodeOutputSchema = z.string().nullable().describe('The comprehensively refactored code. Must be a complete HTML document ending with </html>, or null if refactoring failed.');
-export type RefactorCodeOutput = z.infer<typeof RefactorCodeOutputSchema>; // This will be `string | null`
+const RefactorCodeOutputSchema = z.string().nullable().describe('The comprehensively refactored code. Must be a complete HTML document ending with </html>, or null if refactoring failed, or an HTML comment if explaining failure.');
+export type RefactorCodeOutput = z.infer<typeof RefactorCodeOutputSchema>;
 
 const permissiveSafetySettings = [
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
@@ -40,7 +39,6 @@ export async function refactorCode(input: RefactorCodeInput): Promise<RefactorCo
   }
 }
 
-// Define the initial refactoring prompt
 const refactorCodePrompt = ai.definePrompt({
   name: 'refactorCodePrompt',
   input: {
@@ -50,19 +48,22 @@ const refactorCodePrompt = ai.definePrompt({
     }),
   },
   output: {
-    schema: RefactorCodeOutputSchema, // Use the string | null schema
+    schema: RefactorCodeOutputSchema,
   },
   prompt: `You are an expert code refactoring agent.
 
 You will be given code and a prompt describing how to refactor the code. Apply the requested changes comprehensively throughout the code, ensuring consistency and maintaining functionality unless the prompt specifies otherwise.
 
 **IMPORTANT INSTRUCTIONS - FOLLOW STRICTLY:**
-1.  **Output Format:** Your response MUST consist of *only* the fully refactored HTML code, and NOTHING ELSE.
+1.  **Output Format:** Your response MUST consist of *only* the fully refactored HTML code.
     Your output MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`.
     **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
     The very first character of your entire response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
-    IF YOU CANNOT FULFILL THE REQUEST (e.g., due to safety constraints or an impossible request), INSTEAD OF RETURNING NULL, return an HTML comment explaining why you cannot fulfill the request (e.g., \`<!-- Error: Cannot refactor due to X, Y, Z. -->\`). If you *can* fulfill the request, provide ONLY the HTML code.
+
+    If, for any reason (such as safety constraints or an overly complex/impossible request), you cannot generate the refactored HTML code as requested, then your entire response MUST be a single HTML comment explaining the reason (e.g., \`<!-- Error: Cannot refactor due to X, Y, Z. -->\` or \`<!-- Error: Content refactoring blocked by safety. -->\`).
+    Otherwise, if you *can* fulfill the request, provide ONLY the complete refactored HTML code.
+
 2.  **Completeness:** Ensure the output is the *entire*, refactored code. If the full content cannot be generated in one response, provide as much as possible. The system will attempt to complete it.
 
 Original Code:
@@ -73,13 +74,12 @@ Original Code:
 Refactoring Prompt:
 {{{prompt}}}
 
-Refactored Code (COMPLETE HTML ONLY, starting with <!DOCTYPE html>, ending with </html>, OR an HTML comment explaining failure):`,
+Refactored Code (COMPLETE HTML ONLY, starting with <!DOCTYPE html>, ending with </html>, OR a single HTML comment explaining failure):`,
   config: {
     safetySettings: permissiveSafetySettings,
   },
 });
 
-// Define the continuation prompt for refactoring
 const continueRefactorCodePrompt = ai.definePrompt({
   name: 'continueRefactorCodePrompt',
   input: {
@@ -90,7 +90,7 @@ const continueRefactorCodePrompt = ai.definePrompt({
     }),
   },
   output: {
-    schema: z.string().nullable().describe('The rest of the refactored HTML code, starting exactly where the partial code left off, and completing the HTML file ending with </html>, or null.'),
+    schema: z.string().nullable().describe('The rest of the refactored HTML code, starting exactly where the partial code left off, and completing the HTML file ending with </html>, or null, or an HTML comment explaining failure to complete.'),
   },
   prompt: `You are an expert code refactoring agent continuing the refactoring of a large HTML file. You were given the original code and a refactoring prompt. You started generating the refactored code, but it was incomplete (it did not end with \`</html>\`).
 
@@ -112,7 +112,8 @@ Partially Refactored Code Generated So Far:
     **DO NOT REPEAT ANY PART OF THE PARTIAL CODE.**
     **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
-2.  **Completeness:** Ensure the final combined code (partial code + your continuation) is a single, valid, and complete refactored HTML file ending with \`</html>\`, fully applying the refactoring prompt to the entire original code. IF YOU CANNOT COMPLETE IT, return an HTML comment explaining why (e.g., \`<!-- Error: Could not complete refactor due to X. -->\`).
+2.  **Completeness:** Ensure the final combined code (partial code + your continuation) is a single, valid, and complete refactored HTML file ending with \`</html>\`, fully applying the refactoring prompt to the entire original code.
+    IF YOU CANNOT COMPLETE IT, your entire response must be a single HTML comment explaining why (e.g., \`<!-- Error: Could not complete refactor due to X. -->\`).
 
 Continuation of Refactored Code (HTML ONLY, completes the HTML file ending with </html>, OR an HTML comment explaining failure):`,
   config: {
@@ -121,13 +122,11 @@ Continuation of Refactored Code (HTML ONLY, completes the HTML file ending with 
 });
 
 
-// Helper function to check if HTML seems complete
 function isHtmlComplete(code: string): boolean {
     const trimmedCode = code.trim();
     return trimmedCode.endsWith('</html>');
 }
 
-// Helper function to clean up markdown backticks
 function cleanupCode(code: string | undefined | null): string {
     if (code === undefined || code === null) {
         return '';
@@ -154,37 +153,40 @@ const refactorCodeFlow = ai.defineFlow(
   {
     name: 'refactorCodeFlow',
     inputSchema: RefactorCodeInputSchema,
-    outputSchema: RefactorCodeOutputSchema, // Output is now z.string().nullable()
+    outputSchema: RefactorCodeOutputSchema,
   },
-  async (input): Promise<string | null> => { // Return type is string | null
+  async (input): Promise<string | null> => {
     let fullRefactoredCode = '';
     let attempts = 0;
 
     try {
-      // Initial refactor attempt
+      console.log("Attempting initial code refactor with prompt:", input.prompt);
       let response = await refactorCodePrompt(input);
+
       if (response.output === null) {
         console.error("Initial refactor returned null from the model.");
-        return `<!-- Error: AI model returned null during initial refactor. This often indicates an API key issue or the model cannot fulfill the request. -->\n${input.code}`;
+        return `<!-- Error: AI model returned null during initial refactor. This might indicate an API key issue or the model cannot fulfill the request. -->\n${input.code}`;
       }
       let generatedHtml = cleanupCode(response.output);
       fullRefactoredCode = generatedHtml;
+      console.log("Initial refactored HTML (cleaned, length):", fullRefactoredCode.length);
+
 
       if (fullRefactoredCode.trim() === '' && response.output !== null) {
-        console.warn("Initial refactor resulted in an empty string after cleanup, though the model did not return null.");
-        return `<!-- Warning: AI returned an empty string during refactor. -->\n${input.code}`;
+        console.warn("Initial refactor resulted in an empty string after cleanup, though the model did not return null. Original output:", response.output);
+        return `<!-- Warning: AI returned an empty string during refactor. The model might have attempted an HTML comment that was removed. -->\n${input.code}`;
       }
 
-      // If the model returned an error comment, pass it through
       if (fullRefactoredCode.startsWith('<!-- Error:') || fullRefactoredCode.startsWith('<!-- Warning:')) {
-         console.warn("AI model returned an error/warning comment during refactor:", fullRefactoredCode);
-         return fullRefactoredCode; // Keep original code if refactor fails with comment
+         console.warn("AI model returned an error/warning comment directly during refactor:", fullRefactoredCode);
+         // If the model intentionally returned an error comment, we should return it as is,
+         // rather than appending the original code, as the user needs to see the model's message.
+         return fullRefactoredCode;
       }
-
 
       while (!isHtmlComplete(fullRefactoredCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
          attempts++;
-         console.log(`Refactored code incomplete (attempt ${attempts}). Requesting continuation... Current length: ${fullRefactoredCode.length}, Ends with: "${fullRefactoredCode.slice(-20)}"`);
+         console.log(`Refactored code incomplete (attempt ${attempts}). Requesting continuation... Current length: ${fullRefactoredCode.length}, Ends with: "${fullRefactoredCode.slice(-50)}"`);
 
          try {
              const continuationResponse = await continueRefactorCodePrompt({
@@ -194,21 +196,22 @@ const refactorCodeFlow = ai.defineFlow(
              });
 
              if (continuationResponse.output === null) {
-                console.warn(`Refactor continuation attempt ${attempts} returned null.`);
+                console.warn(`Refactor continuation attempt ${attempts} returned null from the model.`);
                 return `${fullRefactoredCode}\n<!-- Warning: AI returned null during refactor continuation attempt ${attempts}. Code may be incomplete. -->`;
              }
 
-             const continuationHtml = cleanupCode(continuationResponse.output); 
+             const continuationHtml = cleanupCode(continuationResponse.output);
+             console.log(`Refactor continuation attempt ${attempts} HTML (cleaned, length): ${continuationHtml.length}`);
 
              if (continuationHtml) {
                  if (continuationHtml.startsWith('<!-- Error:') || continuationHtml.startsWith('<!-- Warning:')) {
                       console.warn(`Refactor continuation attempt ${attempts} returned an error/warning comment:`, continuationHtml);
-                      return `${fullRefactoredCode}\n${continuationHtml}`; // Append the error comment
+                      return `${fullRefactoredCode}\n${continuationHtml}`;
                   }
                  fullRefactoredCode += '\n' + continuationHtml;
-                 console.log(`Appended refactor continuation (length: ${continuationHtml.length}). Total length: ${fullRefactoredCode.length}`);
+                 console.log(`Appended refactor continuation. Total length: ${fullRefactoredCode.length}`);
              } else {
-                  console.warn(`Refactor continuation attempt ${attempts} returned empty code.`);
+                  console.warn(`Refactor continuation attempt ${attempts} returned empty code after cleanup. Original output from continuation:`, continuationResponse.output);
                   if (fullRefactoredCode.length < 100 && !fullRefactoredCode.toLowerCase().includes("<html")) {
                     console.error("Initial refactor and continuation are non-HTML or too short. Aborting.");
                     return `<!-- Error: AI model did not produce valid refactored HTML after ${attempts} attempts. Output was: ${fullRefactoredCode.substring(0,200)} -->\n${input.code}`;
@@ -247,4 +250,3 @@ const refactorCodeFlow = ai.defineFlow(
     }
   }
 );
-

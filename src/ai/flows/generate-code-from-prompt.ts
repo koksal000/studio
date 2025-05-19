@@ -123,9 +123,8 @@ const GenerateCodeInputSchema = z.object({
 });
 export type GenerateCodeInput = z.infer<typeof GenerateCodeInputSchema>;
 
-// Output is now a direct string for the HTML code, or null if generation fails badly
-const GenerateCodeOutputSchema = z.string().nullable().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>, or null if generation failed.');
-export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>; // This will be `string | null`
+const GenerateCodeOutputSchema = z.string().nullable().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>, or null if generation failed or an HTML comment if explaining failure.');
+export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>;
 
 const permissiveSafetySettings = [
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
@@ -139,12 +138,10 @@ export async function generateCode(input: GenerateCodeInput): Promise<GenerateCo
     return await generateCodeFlow(input);
   } catch (error) {
     console.error("Critical error in generateCode flow:", error);
-    // Return an HTML comment string directly, as the context expects string | null
     return `<!-- Error generating code: ${error instanceof Error ? error.message : String(error)} -->`;
   }
 }
 
-// Define the initial generation prompt
 const generateCodePrompt = ai.definePrompt({
   name: 'generateCodePrompt',
   input: {
@@ -153,30 +150,33 @@ const generateCodePrompt = ai.definePrompt({
     }),
   },
   output: {
-    schema: GenerateCodeOutputSchema, // Use the string | null schema
+    schema: GenerateCodeOutputSchema,
   },
   prompt: `You are an expert web developer tasked with generating comprehensive, visually stunning, and feature-rich web applications based on user prompts.
 Follow these instructions ABSOLUTELY AND STRICTLY:
 
-1.  **Output Format:** Your response MUST consist of a SINGLE, complete HTML file, and NOTHING ELSE. This file MUST contain all necessary HTML structure, CSS styles (within <style> tags or inline), and JavaScript logic (within <script> tags). Do NOT generate separate files or use external file references (like <link rel="stylesheet"> or <script src="...">).
+1.  **Output Format:** Your response MUST consist of a SINGLE, complete HTML file. This file MUST contain all necessary HTML structure, CSS styles (within <style> tags or inline), and JavaScript logic (within <script> tags).
+    Do NOT generate separate files or use external file references (like <link rel="stylesheet"> or <script src="...">).
     Your output MUST start *exactly* with \`<!DOCTYPE html>\` and end *exactly* with \`</html>\`.
     **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
     **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
     The very first character of your entire response must be '<' (from \`<!DOCTYPE html>\`) and the very last characters must be '</html>'.
-    IF YOU CANNOT FULFILL THE REQUEST (e.g., due to safety constraints or an impossible request), INSTEAD OF RETURNING NULL, return an HTML comment explaining why you cannot fulfill the request (e.g., \`<!-- Error: The request is too complex due to X, Y, Z. -->\`). If you *can* fulfill the request, provide ONLY the HTML code.
+
+    If, for any reason (such as safety constraints or an overly complex/impossible request), you cannot generate the complete HTML code as requested, then your entire response MUST be a single HTML comment explaining the reason (e.g., \`<!-- Error: The request is too complex to fulfill. -->\` or \`<!-- Error: Content generation blocked by safety. -->\`).
+    Otherwise, if you *can* fulfill the request, provide ONLY the complete HTML code.
 
 2.  **Adhere to the 100 Rules:** You MUST follow these 100 rules (provided below) to ensure comprehensive, high-quality, and user-centric output:
     ${HUNDRED_RULES}
-3.  **Interpret the Prompt Broadly & Massively Expand:** Based on the user's prompt, anticipate related features, consider edge cases, and build a complete, functional, and LARGE-SCALE mini-application or website within the single HTML file, guided by the 100 rules. Aim to generate THOUSANDS of lines of high-quality code.
+3.  **Interpret the Prompt Broadly & Expand:** Based on the user's prompt, anticipate related features, consider edge cases, and build a comprehensive and functional mini-application or website section within the single HTML file, guided by the 100 rules. Aim to generate substantial, high-quality code.
 4.  **Advanced UI/UX Implementation:** The generated application MUST be visually outstanding and highly interactive. Implement the following advanced UI/UX elements extensively:
     *   **Transitions:** Smooth and meaningful transitions for state changes, loading, reveals, etc.
     *   **Advanced Interfaces:** Complex layouts, interactive dashboards, multi-step forms, drag-and-drop interfaces, etc.
     *   **Shadows & Lighting:** Use shadows (box-shadow, text-shadow) and subtle lighting effects to create depth and realism.
     *   **Panels & Modals:** Implement well-designed side panels, modals, drawers, and overlays for secondary content or actions.
-    *   **Ultra Animations:** Sophisticated animations (not just simple fades/slides) for user interactions, loading states, and visual appeal. Use CSS animations/transitions and JavaScript where necessary.
+    *   **Effective Animations:** Well-chosen animations for user interactions, loading states, and visual appeal. Use CSS animations/transitions and JavaScript where necessary.
     *   **Gradients & Colors:** Utilize beautiful gradients and a rich, harmonious color palette effectively throughout the design.
     *   **Excellent Graphics:** Incorporate visually appealing elements, potentially including placeholders or simple SVG graphics if appropriate, to enhance the overall look.
-5.  **Website-Level Complexity:** The final output should resemble a complete section of a modern website or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel.
+5.  **Application-Section Complexity:** The final output should resemble a well-developed section of a modern application or a full mini-application, not just a single component. Think multi-section pages, interactive elements, and a polished look and feel.
 6.  **Code Quality:** Ensure the generated HTML, CSS, and JavaScript are clean, well-structured, efficient, performant, and adhere to modern web standards. Include comments where necessary. CSS should be placed in a <style> tag in the <head>, and JavaScript should be placed in a <script> tag just before the closing </body> tag, unless specific placement is required.
 7.  **No External Dependencies:** Do not include links to external libraries or frameworks unless explicitly requested and absolutely essential for the core functionality described (even then, prefer vanilla solutions if feasible). If a library like Tailwind is requested, embed the necessary CDN link or provide instructions, but default to inline/embedded styles.
 8.  **Completeness:** Ensure the generated HTML code is as complete as possible. Output the *entire* file content, starting with \`<!DOCTYPE html>\`. If the full content cannot be generated in one response, provide as much as possible. The system will attempt to complete it.
@@ -184,13 +184,12 @@ Follow these instructions ABSOLUTELY AND STRICTLY:
 User Prompt:
 {{{prompt}}}
 
-Generated Code (SINGLE HTML FILE ONLY, starting with <!DOCTYPE html>, ending with </html>, OR an HTML comment explaining failure):`,
+Generated Code (SINGLE HTML FILE ONLY, starting with <!DOCTYPE html>, ending with </html>, OR a single HTML comment explaining failure):`,
   config: {
     safetySettings: permissiveSafetySettings,
   },
 });
 
-// Define the continuation prompt
 const continueCodePrompt = ai.definePrompt({
   name: 'continueCodePrompt',
   input: {
@@ -200,7 +199,7 @@ const continueCodePrompt = ai.definePrompt({
     }),
   },
   output: {
-    schema: z.string().nullable().describe('The rest of the HTML code, starting exactly where the partial code left off, and completing the HTML file ending with </html>, or null.'),
+    schema: z.string().nullable().describe('The rest of the HTML code, starting exactly where the partial code left off, and completing the HTML file ending with </html>, or null, or an HTML comment explaining failure to complete.'),
   },
   prompt: `You are an expert web developer continuing the generation of a large HTML file. You previously generated the following partial code based on the original user prompt, but it was incomplete (it did not end with \`</html>\`).
 
@@ -218,7 +217,7 @@ Your response MUST be *only* the continuation of the HTML code.
 **DO NOT WRAP THE HTML IN JSON, XML, MARKDOWN, OR ANY OTHER FORMATTING.**
 **DO NOT INCLUDE ANY EXPLANATORY TEXT, PREAMBLE, OR APOLOGIES BEFORE OR AFTER THE HTML CODE.**
 Ensure the final combined code (partial code + your continuation) is a single, valid, and complete HTML file ending with \`</html>\`. Adhere to all the rules and advanced UI/UX requirements from the original generation task.
-IF YOU CANNOT COMPLETE IT, return an HTML comment explaining why (e.g., \`<!-- Error: Could not complete due to X. -->\`).
+IF YOU CANNOT COMPLETE IT, your entire response must be a single HTML comment explaining why (e.g., \`<!-- Error: Could not complete due to X. -->\`).
 
 Continuation Code (HTML ONLY, completes the HTML file ending with </html>, OR an HTML comment explaining failure):`,
   config: {
@@ -227,26 +226,23 @@ Continuation Code (HTML ONLY, completes the HTML file ending with </html>, OR an
 });
 
 
-// Helper function to check if HTML seems complete
 function isHtmlComplete(code: string): boolean {
     const trimmedCode = code.trim();
     return trimmedCode.endsWith('</html>');
 }
 
-// Helper function to clean up markdown backticks
 function cleanupCode(code: string | undefined | null): string {
     if (code === undefined || code === null) {
         return '';
     }
     let cleaned = String(code).trim();
-    // Remove markdown ```html ... ``` wrapper if present
     if (cleaned.startsWith('```html')) {
       cleaned = cleaned.substring(7);
       if (cleaned.endsWith('```')) {
         cleaned = cleaned.substring(0, cleaned.length - 3);
       }
-      cleaned = cleaned.trimStart(); // remove leading newline after ```html
-    } else if (cleaned.startsWith('```')) { // More generic ``` removal
+      cleaned = cleaned.trimStart();
+    } else if (cleaned.startsWith('```')) {
       cleaned = cleaned.substring(3);
       if (cleaned.endsWith('```')) {
         cleaned = cleaned.substring(0, cleaned.length - 3);
@@ -261,37 +257,38 @@ const generateCodeFlow = ai.defineFlow(
   {
     name: 'generateCodeFlow',
     inputSchema: GenerateCodeInputSchema,
-    outputSchema: GenerateCodeOutputSchema, // Output is now z.string().nullable()
+    outputSchema: GenerateCodeOutputSchema,
   },
-  async (input): Promise<string | null> => { // Return type is string | null
+  async (input): Promise<string | null> => {
      let fullCode = '';
      let attempts = 0;
 
      try {
-       // Initial generation attempt
+       console.log("Attempting initial code generation with prompt:", input.prompt);
        let response = await generateCodePrompt(input);
 
        if (response.output === null) {
          console.error("Initial generation returned null from the model.");
-         return "<!-- Error: AI model returned null during initial generation. This often indicates an API key issue or the model cannot fulfill the request. -->";
+         return "<!-- Error: AI model returned null during initial generation. This might indicate an API key issue, the model cannot fulfill the request, or a temporary API problem. -->";
        }
        let generatedHtml = cleanupCode(response.output);
        fullCode = generatedHtml;
+       console.log("Initial generated HTML (cleaned, length):", fullCode.length);
+
 
        if (fullCode.trim() === '' && response.output !== null) {
-         console.warn("Initial generation resulted in an empty string after cleanup, though the model did not return null.");
-         return "<!-- Warning: AI returned an empty string after cleanup. -->";
+         console.warn("Initial generation resulted in an empty string after cleanup, though the model did not return null. Original output:", response.output);
+         return "<!-- Warning: AI returned an empty string after cleanup. The model might have attempted an HTML comment that was removed. -->";
        }
-        // If the model returned an error comment, pass it through
+
        if (fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:')) {
-         console.warn("AI model returned an error/warning comment:", fullCode);
+         console.warn("AI model returned an error/warning comment directly:", fullCode);
          return fullCode;
        }
 
-
        while (!isHtmlComplete(fullCode) && attempts < MAX_CONTINUATION_ATTEMPTS) {
           attempts++;
-          console.log(`Code generation incomplete (attempt ${attempts}). Requesting continuation... Current length: ${fullCode.length}, Ends with: "${fullCode.slice(-20)}"`);
+          console.log(`Code generation incomplete (attempt ${attempts}). Requesting continuation... Current length: ${fullCode.length}, Ends with: "${fullCode.slice(-50)}"`);
 
           try {
               const continuationResponse = await continueCodePrompt({
@@ -300,27 +297,26 @@ const generateCodeFlow = ai.defineFlow(
               });
               
               if (continuationResponse.output === null) {
-                  console.warn(`Continuation attempt ${attempts} returned null.`);
+                  console.warn(`Continuation attempt ${attempts} returned null from the model.`);
                   return `${fullCode}\n<!-- Warning: AI returned null during continuation attempt ${attempts}. Code may be incomplete. -->`;
               }
 
               const continuationHtml = cleanupCode(continuationResponse.output); 
+              console.log(`Continuation attempt ${attempts} HTML (cleaned, length): ${continuationHtml.length}`);
 
               if (continuationHtml) {
                   if (continuationHtml.startsWith('<!-- Error:') || continuationHtml.startsWith('<!-- Warning:')) {
                       console.warn(`Continuation attempt ${attempts} returned an error/warning comment:`, continuationHtml);
-                      return `${fullCode}\n${continuationHtml}`; // Append the error comment
+                      return `${fullCode}\n${continuationHtml}`;
                   }
                   fullCode += '\n' + continuationHtml; 
-                  console.log(`Appended continuation (length: ${continuationHtml.length}). Total length: ${fullCode.length}`);
+                  console.log(`Appended continuation. Total length: ${fullCode.length}`);
               } else {
-                   console.warn(`Continuation attempt ${attempts} returned empty code.`);
-                   // If the initial code was also very short and non-HTML, it's a bigger problem.
+                   console.warn(`Continuation attempt ${attempts} returned empty code after cleanup. Original output from continuation:`, continuationResponse.output);
                    if (fullCode.length < 100 && !fullCode.toLowerCase().includes("<html")) {
                         console.error("Initial generation and continuation are non-HTML or too short. Aborting.");
                         return `<!-- Error: AI model did not produce valid HTML after ${attempts} attempts. Initial output was: ${fullCode.substring(0, 200)} -->`;
                    }
-                   // Otherwise, might be a small hiccup, break and return what we have.
                    break; 
               }
           } catch (continuationError) {
@@ -339,12 +335,10 @@ const generateCodeFlow = ai.defineFlow(
            console.log("Code generation appears complete or ended with an AI-provided error/warning.");
        }
        
-       // Final check for very short or non-HTML output, unless it's an intentional error message
        if (!(fullCode.startsWith('<!-- Error:') || fullCode.startsWith('<!-- Warning:')) && fullCode.trim().length < 200 && !fullCode.toLowerCase().includes("<html")) {
            console.warn("Generated code is suspiciously short and might not be valid HTML:", fullCode.substring(0,100));
            return `<!-- Error: Generated code is too short or not valid HTML. Output: ${fullCode.substring(0,500)} -->`;
        }
-
 
        return fullCode;
      } catch (initialError) { 
@@ -357,4 +351,3 @@ const generateCodeFlow = ai.defineFlow(
      }
    }
 );
-
