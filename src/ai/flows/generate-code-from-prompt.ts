@@ -122,7 +122,7 @@ const GenerateCodeInputSchema = z.object({
 export type GenerateCodeInput = z.infer<typeof GenerateCodeInputSchema>;
 
 const GenerateCodeOutputSchema = z.object({
-  code: z.string().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>.'),
+  code: z.string().describe('The generated HTML code, containing all HTML, CSS, and JS. Must be a complete HTML document ending with </html>, or an HTML comment if explaining failure.'),
 });
 export type GenerateCodeOutput = z.infer<typeof GenerateCodeOutputSchema>;
 
@@ -160,7 +160,6 @@ const generateCodePrompt = ai.definePrompt({
   output: { // Expects a JSON object with a "code" property
     schema: GenerateCodeOutputSchema,
   },
-  // Removed permissiveSafetySettings to revert to previous state
   prompt: `You are an EXCEPTIONALLY PROACTIVE and CREATIVE expert web developer and AI system designer. Your primary directive is to generate COMPREHENSIVE, VISUALLY STUNNING, and FEATURE-RICH web applications or complete website sections.
 
 Your response MUST BE a JSON object of the following format:
@@ -249,3 +248,5 @@ const generateCodeFlow = ai.defineFlow(
     }
   }
 );
+
+    

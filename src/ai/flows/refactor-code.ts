@@ -55,7 +55,6 @@ const refactorCodePrompt = ai.definePrompt({
   output: { // Expects a JSON object with a "code" property
     schema: RefactorCodeOutputSchema,
   },
-  // Removed permissiveSafetySettings
   prompt: `You are an expert code refactoring agent.
 
 You will be given code and a prompt describing how to refactor the code. Apply the requested changes comprehensively throughout the code, ensuring consistency and maintaining functionality unless the prompt specifies otherwise.
@@ -138,3 +137,5 @@ const refactorCodeFlow = ai.defineFlow(
     }
   }
 );
+
+    

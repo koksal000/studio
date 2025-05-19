@@ -62,8 +62,6 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    // This effect handles updating previewUrl and generatedFiles whenever generatedCode changes.
-    // It also cleans up old blob URLs.
     let newPreviewUrl: string | null = null;
     if (generatedCode) {
       const files = parseHtmlString(generatedCode);
@@ -81,6 +79,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setGeneratedFiles([]);
     }
 
+    // Clean up old URL before setting new one
     setPreviewUrl(currentOldUrl => {
       if (currentOldUrl) {
         URL.revokeObjectURL(currentOldUrl);
@@ -88,22 +87,13 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       return newPreviewUrl;
     });
 
-    // This cleanup function will run when the component unmounts or before the effect runs again.
-    // However, since newPreviewUrl is local to this effect, direct cleanup here is tricky.
-    // The cleanup of newPreviewUrl if it's not set to previewUrl state is handled by the nature of it being a local variable.
-    // The cleanup of the `previewUrl` state variable is handled when it's replaced or on unmount.
-
-  }, [generatedCode, parseHtmlString]);
-
-  // Effect for cleaning up the previewUrl on component unmount
-  useEffect(() => {
-    const urlToCleanOnUnmount = previewUrl;
+    // Ensure the new URL is cleaned up if the component unmounts or if newPreviewUrl itself is updated
     return () => {
-      if (urlToCleanOnUnmount) {
-        URL.revokeObjectURL(urlToCleanOnUnmount);
+      if (newPreviewUrl) {
+        URL.revokeObjectURL(newPreviewUrl);
       }
     };
-  }, [previewUrl]);
+  }, [generatedCode, parseHtmlString]);
 
 
   const handleGenerateCode = async () => {
@@ -121,8 +111,8 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       const result: GenerateCodeOutput = await generateCode({ prompt });
       if (result && typeof result.code === 'string') {
         setGeneratedCode(result.code);
-        if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- Warning:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
-             setError(result.code.trim() === '' ? 'AI returned empty content.' : result.code);
+        if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- WARNING:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
+          setError(result.code.trim() === '' ? 'AI returned empty content.' : result.code);
         }
       } else {
         const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY. The AI model itself provided no content or an invalid structure.';
@@ -154,12 +144,12 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setRefactoredCode(null);
 
     try {
-      const currentGeneratedCode = generatedCode; // Capture current generatedCode
+      const currentGeneratedCode = generatedCode;
       const result: RefactorCodeOutput = await refactorCode({ code: currentGeneratedCode, prompt: refactorPrompt });
       if (result && typeof result.code === 'string') {
         setRefactoredCode(result.code);
-         if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- Warning:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
-            setRefactorError(result.code.trim() === '' ? 'AI returned empty refactored code.' : result.code);
+        if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- WARNING:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
+           setRefactorError(result.code.trim() === '' ? 'AI returned empty refactored code.' : result.code);
         }
       } else {
         const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY_FOR_REFACTOR. The AI model provided no content or an invalid structure for refactoring.';
@@ -177,7 +167,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const applyRefactor = () => {
-    if (refactoredCode !== null && typeof refactoredCode === 'string' && !(refactoredCode.startsWith('<!-- Error:') || refactoredCode.startsWith('<!-- Warning:') || refactoredCode.startsWith('<!-- CRITICAL_ERROR:'))) {
+    if (refactoredCode !== null && typeof refactoredCode === 'string' && !(refactoredCode.startsWith('<!-- Error:') || refactoredCode.startsWith('<!-- WARNING:') || refactoredCode.startsWith('<!-- CRITICAL_ERROR:'))) {
       setPreviousGeneratedCode(generatedCode);
       setGeneratedCode(refactoredCode);
       setRefactoredCode(null);
@@ -205,7 +195,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setError('No valid code generated to download.');
       return;
     }
-    if (generatedCode.startsWith('<!-- Error:') || generatedCode.startsWith('<!-- Warning:') || generatedCode.startsWith('<!-- CRITICAL_ERROR:')) {
+    if (generatedCode.startsWith('<!-- Error:') || generatedCode.startsWith('<!-- WARNING:') || generatedCode.startsWith('<!-- CRITICAL_ERROR:')) {
         setError('Cannot download code containing errors.');
         return;
     }
@@ -225,8 +215,11 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePreview = useCallback(() => {
-    // This function is primarily for the refresh button.
-    // The main preview update logic is in the useEffect hook listening to generatedCode.
+    // This function's body is effectively handled by the useEffect hook watching `generatedCode`
+    // We keep it as a no-op or a re-trigger if necessary, but direct manipulation
+    // of previewUrl here can lead to loops if not careful.
+    // The useEffect on generatedCode is the primary mechanism for updating previewUrl.
+    // Forcing a refresh can be done by clearing and re-deriving from generatedCode if needed.
     if (generatedCode) {
       const files = parseHtmlString(generatedCode);
       if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:')) {
@@ -258,7 +251,6 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       });
     }
   }, [generatedCode, parseHtmlString, setError]);
-
 
   return (
     <CodeContext.Provider
