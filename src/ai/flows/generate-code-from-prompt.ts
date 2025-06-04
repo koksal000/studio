@@ -38,6 +38,13 @@ function isHtmlIncomplete(htmlString: string): boolean {
 }
 
 const MAX_COMPLETION_ATTEMPTS = 2; // Max attempts to complete the code
+const allBlockNoneSafetySettings = [
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
+];
 
 export async function generateCode(input: GenerateCodeInput): Promise<GenerateCodeOutput> {
   try {
@@ -126,13 +133,7 @@ const generateCodePrompt = ai.definePrompt({
     schema: GenerateCodeOutputSchema,
   },
   config: {
-    safetySettings: [ 
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
-    ],
+    safetySettings: allBlockNoneSafetySettings,
   },
   prompt: `You are an EXCEPTIONALLY PROACTIVE and CREATIVE expert web developer and AI system designer. Your primary directive is to generate COMPREHENSIVE, VISUALLY STUNNING, and FEATURE-RICH web applications or complete website sections.
 
@@ -144,7 +145,7 @@ The "code" value MUST be a single string containing the complete HTML document, 
 
 ABSOLUTELY NO MARKDOWN, NO EXPLANATORY TEXT OUTSIDE THE JSON STRUCTURE. ONLY THE JSON OBJECT.
 
-If, for any reason (such as an overly complex/impossible request that you CANNOT FULFILL, or a safety/content policy violation), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: The request is too complex to fulfill. -->" }). Do NOT mention safety or content blocking in the error message unless it is the absolute only reason, or if you are specifically instructed by a safety policy to do so.
+If, for any reason (such as an overly complex/impossible request that you CANNOT FULFILL), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: The request is too complex to fulfill. -->" }).
 
 TARGET OUTPUT LENGTH for the HTML code string: AIM FOR A MINIMUM OF 1000-1500 LINES OF CODE. For any non-trivial request, and even for very short user prompts (e.g., "a button"), you MUST proactively generate a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section (potentially 1500-5000+ lines, aiming for an average of 2000-3000 lines for typical requests), demonstrating deep interpretation and proactive feature addition. Output should be a complete, functioning experience.
 

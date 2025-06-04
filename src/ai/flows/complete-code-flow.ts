@@ -24,6 +24,14 @@ const CompleteCodeOutputSchema = z.object({
 });
 export type CompleteCodeOutput = z.infer<typeof CompleteCodeOutputSchema>;
 
+const allBlockNoneSafetySettings = [
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
+];
+
 export async function completeCode(input: CompleteCodeInput): Promise<CompleteCodeOutput> {
   return completeCodeFlow(input);
 }
@@ -32,6 +40,9 @@ const completeCodePrompt = ai.definePrompt({
   name: 'completeCodePrompt',
   input: {schema: CompleteCodeInputSchema},
   output: {schema: CompleteCodeOutputSchema},
+  config: {
+    safetySettings: allBlockNoneSafetySettings,
+  },
   prompt: `You are an AI assistant highly specialized in completing TRUNCATED HTML code.
 You will be given an INCOMPLETE HTML code snippet and the original user prompt that led to its generation.
 Your SOLE TASK is to provide ONLY the *MISSING PORTION* of the HTML code to make it complete and valid.

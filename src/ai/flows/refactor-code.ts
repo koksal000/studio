@@ -34,6 +34,13 @@ function isHtmlIncomplete(htmlString: string): boolean {
 }
 
 const MAX_COMPLETION_ATTEMPTS = 2;
+const allBlockNoneSafetySettings = [
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
+];
 
 export async function refactorCode(input: RefactorCodeInput): Promise<RefactorCodeOutput> {
   try {
@@ -123,13 +130,7 @@ const refactorCodePrompt = ai.definePrompt({
     schema: RefactorCodeOutputSchema,
   },
   config: {
-    safetySettings: [ 
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
-    ],
+    safetySettings: allBlockNoneSafetySettings,
   },
   prompt: `You are an EXCEPTIONALLY SKILLED expert code refactoring and enhancement agent.
 Your primary directive is to take the provided HTML/CSS/JS code and apply the user's refactoring instructions comprehensively, while also proactively enhancing the code to meet the highest standards of quality, functionality, and visual appeal.
@@ -142,7 +143,7 @@ The "code" value MUST be a single string containing the complete refactored HTML
 
 ABSOLUTELY NO MARKDOWN, NO EXPLANATORY TEXT OUTSIDE THE JSON STRUCTURE. ONLY THE JSON OBJECT.
 
-If, for any reason (such as an overly complex/impossible request that you CANNOT FULFILL, or a safety/content policy violation), you CANNOT generate the refactored HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: Cannot refactor due to X, Y, Z. -->" }). Do NOT mention safety or content blocking in the error message unless it is the absolute only reason, or if you are specifically instructed by a safety policy to do so.
+If, for any reason (such as an overly complex/impossible request that you CANNOT FULFILL), you CANNOT generate the refactored HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: Cannot refactor due to X, Y, Z. -->" }).
 
 TARGET OUTPUT LENGTH for the HTML code string: AIM FOR A MINIMUM OF 1000-1500 LINES OF CODE, or significantly expand upon the original if it's already long. Even if the refactor request is simple, proactively enhance the code.
 

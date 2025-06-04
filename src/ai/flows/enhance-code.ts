@@ -34,6 +34,13 @@ function isHtmlIncomplete(htmlString: string): boolean {
 }
 
 const MAX_COMPLETION_ATTEMPTS = 2;
+const allBlockNoneSafetySettings = [
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
+];
 
 export async function enhanceCode(input: EnhanceCodeInput): Promise<EnhanceCodeOutput> {
   try {
@@ -119,13 +126,7 @@ const enhanceCodePrompt = ai.definePrompt({
   input: {schema: EnhanceCodeInputSchema},
   output: {schema: EnhanceCodeOutputSchema},
   config: {
-    safetySettings: [ 
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
-    ],
+    safetySettings: allBlockNoneSafetySettings,
   },
   prompt: `You are an EXCEPTIONAL AI Code Enhancer, Completer, and Extender.
 Your primary directive is to take the provided HTML/CSS/JS code, which was generated based on an original user prompt, and SIGNIFICANTLY enhance, complete, and expand upon it to create a truly professional, feature-rich, and visually stunning web application or website section.

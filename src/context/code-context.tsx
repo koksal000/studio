@@ -5,6 +5,8 @@ import React, { createContext, useState, useContext, ReactNode, useCallback, use
 import { generateCode, GenerateCodeInput, GenerateCodeOutput } from '@/ai/flows/generate-code-from-prompt';
 import { refactorCode, RefactorCodeInput, RefactorCodeOutput } from '@/ai/flows/refactor-code';
 import { enhanceCode, EnhanceCodeInput, EnhanceCodeOutput } from '@/ai/flows/enhance-code';
+import { enhanceUserPrompt, EnhancePromptInput, EnhancePromptOutput } from '@/ai/flows/enhance-prompt-flow';
+
 
 export interface GeneratedFile {
   fileName: string;
@@ -42,6 +44,10 @@ interface CodeContextType {
   isEnhancing: boolean;
   enhanceError: string | null;
   handleEnhanceCode: () => Promise<void>;
+
+  isEnhancingPrompt: boolean;
+  enhancePromptError: string | null;
+  handleEnhancePrompt: () => Promise<void>;
 }
 
 const CodeContext = createContext<CodeContextType | undefined>(undefined);
@@ -64,6 +70,10 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
 
   const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
+
+  const [isEnhancingPrompt, setIsEnhancingPrompt] = useState<boolean>(false);
+  const [enhancePromptError, setEnhancePromptError] = useState<string | null>(null);
+
 
   const parseHtmlString = useCallback((htmlString: string | null): GeneratedFile[] => {
     if (!htmlString || typeof htmlString !== 'string' || htmlString.trim() === '') {
@@ -118,6 +128,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setFutureGeneratedCode([]); // Clear redo stack on new generation
     setRefactoredCode(null);
     setEnhanceError(null);
+    setEnhancePromptError(null);
 
     try {
       const result: GenerateCodeOutput = await generateCode({ prompt } as GenerateCodeInput);
@@ -154,6 +165,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setIsRefactoring(true);
     setRefactorError(null);
     setEnhanceError(null);
+    setEnhancePromptError(null);
     setRefactoredCode(null);
 
     try {
@@ -190,6 +202,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setError(null);
       setRefactorError(null);
       setEnhanceError(null);
+      setEnhancePromptError(null);
     } else {
       setRefactorError(refactoredCode === null ? "Cannot apply changes: No refactored code available." : "Cannot apply changes: Refactored code contains errors or is empty.");
     }
@@ -200,7 +213,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setEnhanceError('No code available to enhance.');
       return;
     }
-    if (!prompt) {
+    if (!prompt) { // Using original prompt state for enhancement context
       setEnhanceError('Original prompt is missing, cannot enhance.');
       return;
     }
@@ -209,12 +222,13 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setEnhanceError(null);
     setError(null); 
     setRefactorError(null); 
+    setEnhancePromptError(null);
 
     try {
       const currentCodeToEnhance = generatedCode;
       const result: EnhanceCodeOutput = await enhanceCode({
         currentCode: currentCodeToEnhance,
-        originalUserPrompt: prompt,
+        originalUserPrompt: prompt, 
       } as EnhanceCodeInput);
 
       if (result && typeof result.enhancedCode === 'string') {
@@ -223,7 +237,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
         } else {
           setPreviousGeneratedCode(currentCodeToEnhance);
           setGeneratedCode(result.enhancedCode);
-          setFutureGeneratedCode([]); // Clear redo stack on successful enhancement
+          setFutureGeneratedCode([]); 
         }
       } else {
         const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_STRUCTURE_FOR_ENHANCED_CODE.';
@@ -238,6 +252,38 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const handleEnhancePrompt = async () => {
+    if (!prompt) {
+      setEnhancePromptError('Please enter a prompt to enhance.');
+      return;
+    }
+    setIsEnhancingPrompt(true);
+    setEnhancePromptError(null);
+    setError(null);
+    setRefactorError(null);
+    setEnhanceError(null);
+
+    try {
+      const result: EnhancePromptOutput = await enhanceUserPrompt({ userInputPrompt: prompt } as EnhancePromptInput);
+      if (result && typeof result.enhancedPrompt === 'string') {
+        if (result.enhancedPrompt.startsWith('Error:') || result.enhancedPrompt.startsWith('Warning:')) {
+            setEnhancePromptError(result.enhancedPrompt);
+        } else {
+            setPrompt(result.enhancedPrompt);
+        }
+      } else {
+        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_STRUCTURE_FOR_ENHANCED_PROMPT.';
+        setEnhancePromptError(nullErrorMsg);
+      }
+    } catch (err) {
+      console.error('Error in handleEnhancePrompt:', err);
+      const errorMessage = `Failed to enhance prompt. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
+      setEnhancePromptError(errorMessage);
+    } finally {
+      setIsEnhancingPrompt(false);
+    }
+  };
+
 
   const undoRefactor = () => {
     if (previousGeneratedCode !== null) {
@@ -245,11 +291,12 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
         setFutureGeneratedCode(prev => [generatedCode, ...prev]);
       }
       setGeneratedCode(previousGeneratedCode);
-      setPreviousGeneratedCode(null); // Or manage a deeper undo stack if needed
+      setPreviousGeneratedCode(null);
       setError(null);
       setRefactorError(null);
       setRefactoredCode(null);
       setEnhanceError(null);
+      setEnhancePromptError(null);
     }
   };
 
@@ -265,6 +312,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setError(null);
       setRefactorError(null);
       setEnhanceError(null);
+      setEnhancePromptError(null);
     }
   };
 
@@ -296,7 +344,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     let newUrlObj: { url: string | null } = { url: null };
     if (generatedCode) {
       const files = parseHtmlString(generatedCode);
-      if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:') || files[0].content.startsWith('<!-- WARNING:') || files[0].content.startsWith('<!-- CRITICAL_ERROR:')) {
+      if (files.length > 0 && files[0].content && !files[0].content.startsWith('<!-- Error:') && !files[0].content.startsWith('<!-- WARNING:') && !files[0].content.startsWith('<!-- CRITICAL_ERROR:')) {
         try {
           const blob = new Blob([files[0].content], { type: 'text/html' });
           newUrlObj.url = URL.createObjectURL(blob);
@@ -341,6 +389,9 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
         isEnhancing,
         enhanceError,
         handleEnhanceCode,
+        isEnhancingPrompt,
+        enhancePromptError,
+        handleEnhancePrompt,
       }}
     >
       {children}
@@ -355,5 +406,3 @@ export const useCodeContext = (): CodeContextType => {
   }
   return context;
 };
-
-    
