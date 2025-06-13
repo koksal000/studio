@@ -15,7 +15,6 @@ export const ai = genkit({
       },
     }),
   ],
-  // Attempting to use the desired model with the simpler configuration
-  model: 'googleai/gemini-2.5-flash-preview-05-20',
+  model: 'googleai/gemini-2.0-flash-exp', // Changed model back to 2.0 flash
 });
 
