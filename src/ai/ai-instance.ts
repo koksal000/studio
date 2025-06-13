@@ -7,18 +7,15 @@ export const ai = genkit({
   plugins: [
     googleAI({
       apiKey: process.env.GOOGLE_GENAI_API_KEY,
-      apiVersion: 'v1beta', // Specify v1beta for preview models
+      // Reverted to the generation options that were used with gemini-2.0-flash-exp
       defaultGenerationOptions: {
-        maxOutputTokens: 8192, // This might need adjustment based on the new model's limits
-        temperature: 0.4, 
+        maxOutputTokens: 8192,
+        temperature: 0.4,
         topP: 0.95,
-        // Add thinkingConfig as per your cURL example
-        thinkingConfig: {
-          thinkingBudget: 24576,
-        },
       },
     }),
   ],
-  // Update to the desired preview model
-  model: 'googleai/gemini-2.5-flash-preview-05-20', 
+  // Attempting to use the desired model with the simpler configuration
+  model: 'googleai/gemini-2.5-flash-preview-05-20',
 });
+
