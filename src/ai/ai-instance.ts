@@ -8,14 +8,11 @@ export const ai = genkit({
     googleAI({
       apiKey: process.env.GOOGLE_GENAI_API_KEY,
       defaultGenerationOptions: {
-        maxOutputTokens: 8192, 
+        maxOutputTokens: 8192,
+        temperature: 0.4, // Restored from a previous stable configuration
         topP: 0.95,
-        thinkingConfig: {
-          thinkingBudget: 24576,
-        },
       },
     }),
   ],
-  model: 'googleai/gemini-2.5-flash-preview-05-20',
+  model: 'googleai/gemini-1.5-flash-latest', // Reverted to a known stable model
 });
-
