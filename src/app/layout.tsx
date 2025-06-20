@@ -1,3 +1,4 @@
+
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google'; // Changed to Inter for a more modern feel
 import './globals.css';
@@ -21,6 +22,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <meta name="153b392c8af2ea99e22d489f926074fe5c4a6c1d" content="153b392c8af2ea99e22d489f926074fe5c4a6c1d" />
+        <meta name="referrer" content="no-referrer-when-downgrade" />
+      </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         <AppProviders> {/* Wrap with AppProviders for context/state */}
           {children}
