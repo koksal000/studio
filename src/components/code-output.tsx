@@ -5,7 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { useCodeContext } from '@/context/code-context';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Download, Clipboard, Check, Code, FileText, Pencil, ListCollapse, AlertCircle } from 'lucide-react'; // Removed Sparkles, Undo
+import { Download, Clipboard, Check, Code, FileText, Pencil, ListCollapse, AlertCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { RefactorCodeModal } from './refactor-code-modal';
@@ -93,11 +93,19 @@ export function CodeOutput() {
 
     return (
        <div className="relative flex-1 p-0 m-0 h-full">
-           <div className="absolute top-2 right-2 flex gap-2 z-10">
-             {/* Action buttons moved to header section */}
-            </div>
+           <Button
+             variant="ghost"
+             size="icon"
+             onClick={() => handleCopy(generatedCode as string)} 
+             disabled={!generatedCode || isLoading || isEnhancing}
+             aria-label="Copy HTML Code"
+             title="Copy HTML Code"
+             className="absolute top-2 right-2 z-10 h-8 w-8 bg-background/80 hover:bg-background" // Positioned copy button
+           >
+             {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Clipboard className="h-4 w-4" />}
+           </Button>
            <ScrollArea className="h-full w-full">
-            <pre className="text-sm p-4 pt-12 bg-muted/30 rounded-md overflow-auto font-mono whitespace-pre break-words h-full">
+            <pre className="text-sm p-4 pt-4 bg-muted/30 rounded-md overflow-auto font-mono whitespace-pre break-words h-full">
               <code>{generatedCode || '// No code generated yet...'}</code>
             </pre>
            </ScrollArea>
@@ -138,17 +146,6 @@ export function CodeOutput() {
              >
                <Pencil className="mr-2 h-4 w-4" />
                Düzenle
-             </Button>
-             <Button
-               variant="ghost"
-               size="icon"
-               onClick={() => handleCopy(generatedCode as string)} 
-               disabled={!generatedCode}
-               aria-label="Copy HTML Code"
-               title="Copy HTML Code"
-               className="h-8 w-8"
-             >
-               {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Clipboard className="h-4 w-4" />}
              </Button>
          </div>
       </div>
