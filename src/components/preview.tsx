@@ -62,7 +62,7 @@ export function Preview() {
 
   return (
     // Use relative positioning on the outer div to contain the absolute fullscreen element
-    <div className="flex flex-col flex-1 h-1/2 overflow-hidden relative">
+    <div className="flex flex-col h-full overflow-hidden relative"> {/* Changed: Removed flex-1, h-1/2 */}
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
             <Eye className="h-5 w-5" />
@@ -141,4 +141,3 @@ export function Preview() {
     </div>
   );
 }
-

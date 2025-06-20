@@ -114,7 +114,7 @@ export function CodeOutput() {
   };
 
   return (
-    <div className="flex flex-col flex-1 h-1/2 border-b border-border overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden"> {/* Changed: Removed flex-1, h-1/2, border-b */}
       <div className="flex items-center justify-between p-3 border-b"> 
          <div className="flex items-center gap-2">
            <Code className="h-5 w-5" />
@@ -162,5 +162,3 @@ export function CodeOutput() {
     </div>
   );
 }
-
-    
