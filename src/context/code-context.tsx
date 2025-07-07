@@ -137,20 +137,56 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setEnhancePromptError(null);
 
     try {
-      const result: GenerateCodeOutput = await generateCode({ prompt } as GenerateCodeInput);
+      // Step 1: Initial Generation
+      const initialResult: GenerateCodeOutput = await generateCode({ prompt } as GenerateCodeInput);
 
-      if (result && typeof result.code === 'string' && result.code.trim() !== '') {
-        // Check if the server-side flow returned an error comment
-        if (result.code.startsWith('<!--')) {
-            setError(result.code);
-            setGeneratedCode(result.code);
-        } else {
-            setGeneratedCode(result.code);
-        }
-      } else {
-        const errorMsg = 'CRITICAL_ERROR: Generation returned an invalid or empty response.';
+      if (!initialResult || typeof initialResult.code !== 'string' || initialResult.code.trim() === '') {
+        const errorMsg = 'CRITICAL_ERROR: Initial generation returned an invalid or empty response.';
         setError(errorMsg);
         setGeneratedCode(`<!-- ${errorMsg} -->`);
+        setIsLoading(false);
+        return;
+      }
+      
+      if (initialResult.code.startsWith('<!--')) {
+        setError(initialResult.code);
+        setGeneratedCode(initialResult.code);
+        setIsLoading(false);
+        return;
+      }
+
+      let currentCode = initialResult.code;
+      setGeneratedCode(currentCode); // Show initial result in UI
+
+      // Step 2: Iterative Enhancement Loop
+      const TARGET_LINE_COUNT = 1000;
+      const MAX_ENHANCEMENTS = 2; // Max 2 enhancement loops
+      let enhancementCount = 0;
+
+      while (countLines(currentCode) < TARGET_LINE_COUNT && enhancementCount < MAX_ENHANCEMENTS) {
+        enhancementCount++;
+        
+        setIsLoading(false); // Initial loading is done
+        setIsEnhancing(true); // Show enhancing state in UI
+        
+        // Wait 7 seconds before the next API call
+        await sleep(7000); 
+
+        const enhanceInput: EnhanceCodeInput = {
+          currentCode: currentCode,
+          originalUserPrompt: prompt,
+        };
+        const enhanceResult: EnhanceCodeOutput = await enhanceCode(enhanceInput);
+        
+        if (enhanceResult && typeof enhanceResult.enhancedCode === 'string' && !enhanceResult.enhancedCode.startsWith('<!--')) {
+          currentCode = enhanceResult.enhancedCode;
+          setGeneratedCode(currentCode); // Update UI with the newly enhanced code
+        } else {
+          // If enhancement fails, stop the loop but keep the last good code
+          const enhanceErrorMsg = enhanceResult?.enhancedCode || 'Enhancement step failed or returned empty code.';
+          setEnhanceError(enhanceErrorMsg); // Show a non-blocking error
+          break; 
+        }
       }
 
     } catch (err) {
@@ -160,6 +196,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setGeneratedCode(`<!-- Context Error (handleGenerateCode): ${errorMessage.replace(/-->/g, '--&gt;')} -->`);
     } finally {
       setIsLoading(false);
+      setIsEnhancing(false); // Ensure all loading states are off
     }
   };
   

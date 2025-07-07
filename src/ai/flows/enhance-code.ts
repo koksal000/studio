@@ -145,7 +145,7 @@ Your Task:
 3.  **Strictly Adhere to the 100 Rules & Advanced UI/UX Guidelines:** These are paramount. Ensure every aspect of the enhanced code meticulously follows these principles.
     ${HUNDRED_RULES}
     ${ADVANCED_UI_UX_GUIDELINES}
-4.  **Aim for Substantial Improvement:** The goal is not minor tweaks. Strive for a significant increase in code length (aim for 1000-3000+ additional lines if the starting code is short, or a 50-100%+ increase for longer code), features, and overall polish. If the original code is already good, make it outstanding by adding more "wow" factor, delightful micro-interactions, and even more comprehensive features.
+4.  **Aim for Substantial Improvement:** The goal is not minor tweaks. Strive for a significant, meaningful increase in features, interactivity, and overall polish, which should naturally increase the code length by 50-100% or more. If the original code is already good, make it outstanding by adding more "wow" factor, delightful micro-interactions, and even more comprehensive features.
 5.  **Maintain Self-Contained HTML:** The final output MUST be a single HTML string, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`. All CSS must be within \`<style>\` tags in the \`<head>\`, and all JavaScript must be within \`<script>\` tags (preferably before the closing \`</body>\` tag, unless essential for initial rendering). NO EXTERNAL FILES (except for CDNs like for Pyodide). DO NOT TRUNCATE YOUR OUTPUT.
 
 Your JSON Response (ONLY THE JSON OBJECT containing the enhanced HTML):

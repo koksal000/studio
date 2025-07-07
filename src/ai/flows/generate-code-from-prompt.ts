@@ -147,7 +147,7 @@ ABSOLUTELY NO MARKDOWN, NO EXPLANATORY TEXT OUTSIDE THE JSON STRUCTURE. ONLY THE
 
 If, for any reason (such as an overly complex/impossible request that you CANNOT FULFILL), you CANNOT generate the complete HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: The request is too complex to fulfill. -->" }).
 
-TARGET OUTPUT LENGTH for the HTML code string: AIM FOR A MINIMUM OF 1500-2000 LINES OF CODE. For any non-trivial request, and even for very short user prompts (e.g., "a button"), you MUST proactively generate a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section (potentially 2000-5000+ lines, aiming for an average of 3000 lines for typical requests), demonstrating deep interpretation and proactive feature addition. Output should be a complete, functioning experience.
+TARGET OUTPUT LENGTH for the HTML code string: AIM FOR A MINIMUM OF 1000-1500 LINES OF CODE. For any non-trivial request, and even for very short user prompts (e.g., "a button"), you MUST proactively generate a SUBSTANTIAL, FEATURE-RICH, and VISUALLY POLISHED mini-application or website section, demonstrating deep interpretation and proactive feature addition. Output should be a complete, functioning experience.
 
 Follow these instructions ABSOLUTELY AND STRICTLY:
 
