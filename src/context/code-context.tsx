@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
@@ -115,42 +114,101 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [generatedCode, parseHtmlString]);
 
+  // Helper functions for iterative generation
+  const countLines = (text: string | null | undefined): number => {
+    return text ? text.split('\n').length : 0;
+  };
+  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
 
   const handleGenerateCode = async () => {
     if (!prompt) {
       setError('Please enter a prompt.');
       return;
     }
+  
+    // Reset all states
     setIsLoading(true);
     setError(null);
     setGeneratedCode(null);
     setPreviousGeneratedCode(null);
-    setFutureGeneratedCode([]); // Clear redo stack on new generation
+    setFutureGeneratedCode([]);
     setRefactoredCode(null);
     setEnhanceError(null);
     setEnhancePromptError(null);
-
+  
     try {
-      const result: GenerateCodeOutput = await generateCode({ prompt } as GenerateCodeInput);
-      if (result && typeof result.code === 'string') {
-        setGeneratedCode(result.code);
-        if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- WARNING:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
-          setError(result.code.trim() === '' ? 'AI returned empty content.' : result.code);
-        }
-      } else {
+      // Step 1: Initial Generation
+      let currentCode = (await generateCode({ prompt } as GenerateCodeInput)).code;
+      if (!currentCode || typeof currentCode !== 'string') {
         const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY (GenerateCode).';
         setError(nullErrorMsg);
         setGeneratedCode(`<!-- ${nullErrorMsg} -->`);
+        setIsLoading(false);
+        return;
       }
+      setGeneratedCode(currentCode); // Set initial code for the user to see
+  
+      if (currentCode.trim() === '' || currentCode.startsWith('<!-- Error:') || currentCode.startsWith('<!-- WARNING:') || currentCode.startsWith('<!-- CRITICAL_ERROR:')) {
+        setError(currentCode);
+        setIsLoading(false);
+        return;
+      }
+  
+      // Step 2: Iterative Enhancement
+      setIsLoading(false); // Switch from "Generating" to "Enhancing" state
+      setIsEnhancing(true);
+  
+      const TARGET_LINES = 2000;
+      const MAX_ENHANCEMENTS = 2; // Initial gen + 2 enhancements = 3 total calls max
+  
+      for (let i = 0; i < MAX_ENHANCEMENTS; i++) {
+        let lineCount = countLines(currentCode);
+        if (lineCount >= TARGET_LINES) {
+          console.log(`[Iterative Generation] Target line count (${TARGET_LINES}) reached. Stopping enhancement.`);
+          break;
+        }
+        
+        console.log(`[Iterative Generation] Code is ${lineCount} lines. Enhancing (Attempt ${i + 1}/${MAX_ENHANCEMENTS}).`);
+        
+        // Brief delay to avoid rate-limiting issues
+        await delay(3000); // 3-second delay
+  
+        const enhancementResult = await enhanceCode({
+          currentCode: currentCode,
+          originalUserPrompt: prompt,
+        });
+  
+        if (enhancementResult && typeof enhancementResult.enhancedCode === 'string' && !enhancementResult.enhancedCode.startsWith('<!--')) {
+            // Check if the enhancement actually added code
+            if (countLines(enhancementResult.enhancedCode) > lineCount) {
+                currentCode = enhancementResult.enhancedCode;
+                setGeneratedCode(currentCode); // Update UI with progress
+                setPreviousGeneratedCode(null); // Reset undo history during this process
+                setFutureGeneratedCode([]);
+            } else {
+                console.log("[Iterative Generation] Enhancement did not increase code length. Stopping.");
+                break; // Stop if AI isn't adding more code
+            }
+        } else {
+            const enhanceErrorMsg = enhancementResult?.enhancedCode || 'Enhancement failed or returned invalid data.';
+            console.warn(`[Iterative Generation] Enhancement failed: ${enhanceErrorMsg}`);
+            setEnhanceError(`Enhancement step ${i + 1} failed. The last successful version is shown.`);
+            break; // Stop on failure
+        }
+      }
+  
     } catch (err) {
-      console.error('Error in handleGenerateCode:', err);
+      console.error('Error in handleGenerateCode (iterative process):', err);
       const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
       setError(errorMessage);
       setGeneratedCode(`<!-- Context Error (GenerateCode): ${errorMessage.replace(/-->/g, '--&gt;')} -->`);
     } finally {
       setIsLoading(false);
+      setIsEnhancing(false);
     }
   };
+  
 
   const handleRefactorCode = async () => {
     if (!refactorPrompt) {

@@ -94,7 +94,7 @@ export async function enhanceCode(input: EnhanceCodeInput): Promise<EnhanceCodeO
         currentEnhancedCode += "\n<!-- WARNING: Max enhancement completion attempts reached, code might still be incomplete. -->";
     }
 
-    if (currentEnhancedCode.trim() === '' || currentEnhancedCode.startsWith('<!-- Error:') || currentEnhancedCode.startsWith('<!-- WARNING:') || currentEnhancedCode.startsWith('<!-- CRITICAL_ERROR:')) {
+    if (currentEnhancedCode.trim() === '' || currentCode.startsWith('<!-- Error:') || currentCode.startsWith('<!-- WARNING:') || currentCode.startsWith('<!-- CRITICAL_ERROR:')) {
       console.warn(`[enhanceCode export] Final enhanced code is an error/warning: ${currentEnhancedCode.substring(0,100)}`);
       // If the AI returns an error comment, we should preserve the original code as a fallback.
        if (currentEnhancedCode.startsWith('<!-- Error:') || currentEnhancedCode.startsWith('<!-- CRITICAL_ERROR:') || currentEnhancedCode.startsWith('<!-- WARNING:')) {
@@ -141,12 +141,12 @@ Current Code to Enhance/Complete:
 
 Your Task:
 1.  **Complete Incomplete Code:** If the current code appears unfinished (e.g., missing closing tags, incomplete JavaScript logic, unstyled elements), robustly complete it. Ensure all parts are functional and well-integrated.
-2.  **Massively Expand Features & Content:** Go far beyond simple completion. Proactively add new, relevant UI elements, sophisticated interactions, user-friendly functionalities, and meaningful content that would elevate the current code into a more comprehensive and impressive product. Think about what a user would implicitly want or what would make the experience significantly better. Add at least 5-10 substantial new features or content sections if the original code is basic. If it's already good, add 2-3 more "wow" factor elements.
+2.  **Massively Expand Features & Content:** Go far beyond simple completion. Proactively add new, relevant UI elements, sophisticated interactions, user-friendly functionalities, and meaningful content that would elevate the current code into a more comprehensive and impressive product. Think about what a user would implicitly want or what would make the experience significantly better. Add at least 5-10 substantial new features or content sections if the original code is basic. If it's already good, add 2-3 more "wow" factor elements. If the request hints at backend logic or data processing, consider integrating **Pyodide** to run Python code directly in the browser, creating a more powerful, self-contained application.
 3.  **Strictly Adhere to the 100 Rules & Advanced UI/UX Guidelines:** These are paramount. Ensure every aspect of the enhanced code meticulously follows these principles.
     ${HUNDRED_RULES}
     ${ADVANCED_UI_UX_GUIDELINES}
 4.  **Aim for Substantial Improvement:** The goal is not minor tweaks. Strive for a significant increase in code length (aim for 1000-3000+ additional lines if the starting code is short, or a 50-100%+ increase for longer code), features, and overall polish. If the original code is already good, make it outstanding by adding more "wow" factor, delightful micro-interactions, and even more comprehensive features.
-5.  **Maintain Self-Contained HTML:** The final output MUST be a single HTML string, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`. All CSS must be within \`<style>\` tags in the \`<head>\`, and all JavaScript must be within \`<script>\` tags (preferably before the closing \`</body>\` tag, unless essential for initial rendering). NO EXTERNAL FILES. DO NOT TRUNCATE YOUR OUTPUT.
+5.  **Maintain Self-Contained HTML:** The final output MUST be a single HTML string, starting with \`<!DOCTYPE html>\` and ending with \`</html>\`. All CSS must be within \`<style>\` tags in the \`<head>\`, and all JavaScript must be within \`<script>\` tags (preferably before the closing \`</body>\` tag, unless essential for initial rendering). NO EXTERNAL FILES (except for CDNs like for Pyodide). DO NOT TRUNCATE YOUR OUTPUT.
 
 Your JSON Response (ONLY THE JSON OBJECT containing the enhanced HTML):
 {
