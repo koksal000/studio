@@ -94,7 +94,7 @@ export async function enhanceCode(input: EnhanceCodeInput): Promise<EnhanceCodeO
         currentEnhancedCode += "\n<!-- WARNING: Max enhancement completion attempts reached, code might still be incomplete. -->";
     }
 
-    if (currentEnhancedCode.trim() === '' || currentCode.startsWith('<!-- Error:') || currentCode.startsWith('<!-- WARNING:') || currentCode.startsWith('<!-- CRITICAL_ERROR:')) {
+    if (currentEnhancedCode.trim() === '' || currentEnhancedCode.startsWith('<!-- Error:') || currentEnhancedCode.startsWith('<!-- WARNING:') || currentEnhancedCode.startsWith('<!-- CRITICAL_ERROR:')) {
       console.warn(`[enhanceCode export] Final enhanced code is an error/warning: ${currentEnhancedCode.substring(0,100)}`);
       // If the AI returns an error comment, we should preserve the original code as a fallback.
        if (currentEnhancedCode.startsWith('<!-- Error:') || currentEnhancedCode.startsWith('<!-- CRITICAL_ERROR:') || currentEnhancedCode.startsWith('<!-- WARNING:')) {

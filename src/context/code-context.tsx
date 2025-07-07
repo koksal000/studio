@@ -4,7 +4,7 @@ import React, { createContext, useState, useContext, ReactNode, useCallback, use
 import { refactorCode, RefactorCodeInput, RefactorCodeOutput } from '@/ai/flows/refactor-code';
 import { enhanceCode, EnhanceCodeInput, EnhanceCodeOutput } from '@/ai/flows/enhance-code';
 import { enhanceUserPrompt, EnhancePromptInput, EnhancePromptOutput } from '@/ai/flows/enhance-prompt-flow';
-import { generateComprehensiveCode, GenerateComprehensiveCodeInput, GenerateComprehensiveCodeOutput } from '@/ai/flows/generate-comprehensive-code';
+import { generateCode, GenerateCodeInput, GenerateCodeOutput } from '@/ai/flows/generate-code-from-prompt';
 
 // Helper function to count lines
 const countLines = (text: string | null | undefined): number => {
@@ -137,8 +137,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setEnhancePromptError(null);
 
     try {
-      // Call the new single, comprehensive flow that handles iteration on the server
-      const result: GenerateComprehensiveCodeOutput = await generateComprehensiveCode({ prompt } as GenerateComprehensiveCodeInput);
+      const result: GenerateCodeOutput = await generateCode({ prompt } as GenerateCodeInput);
 
       if (result && typeof result.code === 'string' && result.code.trim() !== '') {
         // Check if the server-side flow returned an error comment
@@ -149,7 +148,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
             setGeneratedCode(result.code);
         }
       } else {
-        const errorMsg = 'CRITICAL_ERROR: Comprehensive generation returned an invalid or empty response.';
+        const errorMsg = 'CRITICAL_ERROR: Generation returned an invalid or empty response.';
         setError(errorMsg);
         setGeneratedCode(`<!-- ${errorMsg} -->`);
       }
@@ -158,7 +157,7 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       console.error('Error in handleGenerateCode:', err);
       const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
       setError(errorMessage);
-      setGeneratedCode(`<!-- Context Error (GenerateComprehensiveCode): ${errorMessage.replace(/-->/g, '--&gt;')} -->`);
+      setGeneratedCode(`<!-- Context Error (handleGenerateCode): ${errorMessage.replace(/-->/g, '--&gt;')} -->`);
     } finally {
       setIsLoading(false);
     }
