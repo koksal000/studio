@@ -6,6 +6,13 @@ import { refactorCode, RefactorCodeInput, RefactorCodeOutput } from '@/ai/flows/
 import { enhanceCode, EnhanceCodeInput, EnhanceCodeOutput } from '@/ai/flows/enhance-code';
 import { enhanceUserPrompt, EnhancePromptInput, EnhancePromptOutput } from '@/ai/flows/enhance-prompt-flow';
 
+// Helper function to count lines
+const countLines = (text: string | null | undefined): number => {
+  return text ? text.split('\n').length : 0;
+};
+
+// Helper function for delay
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export interface GeneratedFile {
   fileName: string;
@@ -120,7 +127,6 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // Reset all states for a new generation
     setIsLoading(true);
     setError(null);
     setGeneratedCode(null);
@@ -130,21 +136,59 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setEnhanceError(null);
     setEnhancePromptError(null);
 
+    const TARGET_LINE_COUNT = 2000;
+    const MAX_ENHANCE_ATTEMPTS = 2; // Initial gen + 2 enhancements = 3 total API calls
+    const ENHANCE_DELAY_MS = 7000; // 7 seconds delay between enhancements
+    let enhancementTries = 0;
+    let currentCode: string | null = null;
+    
     try {
-      // Perform a single, comprehensive generation call
-      const result = await generateCode({ prompt } as GenerateCodeInput);
+      // 1. Initial Generation
+      const initialResult = await generateCode({ prompt } as GenerateCodeInput);
 
-      if (result && typeof result.code === 'string') {
-        setGeneratedCode(result.code);
-        // If the AI returns an error comment, display it in the error area as well
-        if (result.code.trim() === '' || result.code.startsWith('<!-- Error:') || result.code.startsWith('<!-- WARNING:') || result.code.startsWith('<!-- CRITICAL_ERROR:')) {
-            setError(result.code);
-        }
-      } else {
-        const nullErrorMsg = 'CRITICAL_ERROR: AI_MODEL_RETURNED_NULL_OR_INVALID_CODE_PROPERTY (GenerateCode).';
-        setError(nullErrorMsg);
-        setGeneratedCode(`<!-- ${nullErrorMsg} -->`);
+      if (!initialResult || typeof initialResult.code !== 'string' || initialResult.code.trim() === '' || initialResult.code.startsWith('<!--')) {
+        const errorMsg = initialResult?.code || 'CRITICAL_ERROR: AI model returned invalid or empty code on initial generation.';
+        setError(errorMsg);
+        setGeneratedCode(`<!-- ${errorMsg} -->`);
+        setIsLoading(false);
+        return;
       }
+      
+      currentCode = initialResult.code;
+      setGeneratedCode(currentCode);
+
+      // 2. Iterative Enhancement Loop
+      while (
+        countLines(currentCode) < TARGET_LINE_COUNT &&
+        enhancementTries < MAX_ENHANCE_ATTEMPTS
+      ) {
+        enhancementTries++;
+        await sleep(ENHANCE_DELAY_MS); // Wait before the next API call
+
+        const enhanceResult = await enhanceCode({
+          currentCode: currentCode as string,
+          originalUserPrompt: prompt,
+        } as EnhanceCodeInput);
+
+        if (enhanceResult && typeof enhanceResult.enhancedCode === 'string' && enhanceResult.enhancedCode.trim() !== '' && !enhanceResult.enhancedCode.startsWith('<!--')) {
+            // Only update if the new code is longer
+            if (countLines(enhanceResult.enhancedCode) > countLines(currentCode)) {
+                currentCode = enhanceResult.enhancedCode;
+                setGeneratedCode(currentCode);
+            } else {
+                // If the code didn't get longer, no point in continuing.
+                break;
+            }
+        } else {
+          // If enhancement fails, stop the loop but keep the last good code.
+          const errorMsg = enhanceResult?.enhancedCode || 'Enhancement step failed or returned empty/error code.';
+          console.warn(errorMsg);
+          // We don't set a main error, as we still have some valid code.
+          // We can append a warning comment to the code itself if we want.
+          break; 
+        }
+      }
+
     } catch (err) {
       console.error('Error in handleGenerateCode:', err);
       const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
