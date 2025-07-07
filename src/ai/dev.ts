@@ -5,3 +5,5 @@ import '@/ai/flows/refactor-code.ts';
 import '@/ai/flows/enhance-code.ts';
 import '@/ai/flows/complete-code-flow.ts';
 import '@/ai/flows/enhance-prompt-flow.ts'; // Added new flow
+import '@/ai/flows/generate-comprehensive-code.ts';
+
