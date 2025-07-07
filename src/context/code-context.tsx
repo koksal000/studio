@@ -6,14 +6,6 @@ import { enhanceCode, EnhanceCodeInput, EnhanceCodeOutput } from '@/ai/flows/enh
 import { enhanceUserPrompt, EnhancePromptInput, EnhancePromptOutput } from '@/ai/flows/enhance-prompt-flow';
 import { generateCode, GenerateCodeInput, GenerateCodeOutput } from '@/ai/flows/generate-code-from-prompt';
 
-// Helper function to count lines
-const countLines = (text: string | null | undefined): number => {
-  return text ? text.split('\n').length : 0;
-};
-
-// Helper function for delay
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 export interface GeneratedFile {
   fileName: string;
   content: string;
@@ -135,60 +127,21 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
     setRefactoredCode(null);
     setEnhanceError(null);
     setEnhancePromptError(null);
+    setIsEnhancing(false); 
 
     try {
-      // Step 1: Initial Generation
-      const initialResult: GenerateCodeOutput = await generateCode({ prompt } as GenerateCodeInput);
+      const result = await generateCode({ prompt });
 
-      if (!initialResult || typeof initialResult.code !== 'string' || initialResult.code.trim() === '') {
-        const errorMsg = 'CRITICAL_ERROR: Initial generation returned an invalid or empty response.';
-        setError(errorMsg);
-        setGeneratedCode(`<!-- ${errorMsg} -->`);
-        setIsLoading(false);
-        return;
-      }
-      
-      if (initialResult.code.startsWith('<!--')) {
-        setError(initialResult.code);
-        setGeneratedCode(initialResult.code);
-        setIsLoading(false);
-        return;
-      }
-
-      let currentCode = initialResult.code;
-      setGeneratedCode(currentCode); // Show initial result in UI
-
-      // Step 2: Iterative Enhancement Loop
-      const TARGET_LINE_COUNT = 1000;
-      const MAX_ENHANCEMENTS = 2; // Max 2 enhancement loops
-      let enhancementCount = 0;
-
-      while (countLines(currentCode) < TARGET_LINE_COUNT && enhancementCount < MAX_ENHANCEMENTS) {
-        enhancementCount++;
-        
-        setIsLoading(false); // Initial loading is done
-        setIsEnhancing(true); // Show enhancing state in UI
-        
-        // Wait 7 seconds before the next API call
-        await sleep(7000); 
-
-        const enhanceInput: EnhanceCodeInput = {
-          currentCode: currentCode,
-          originalUserPrompt: prompt,
-        };
-        const enhanceResult: EnhanceCodeOutput = await enhanceCode(enhanceInput);
-        
-        if (enhanceResult && typeof enhanceResult.enhancedCode === 'string' && !enhanceResult.enhancedCode.startsWith('<!--')) {
-          currentCode = enhanceResult.enhancedCode;
-          setGeneratedCode(currentCode); // Update UI with the newly enhanced code
-        } else {
-          // If enhancement fails, stop the loop but keep the last good code
-          const enhanceErrorMsg = enhanceResult?.enhancedCode || 'Enhancement step failed or returned empty code.';
-          setEnhanceError(enhanceErrorMsg); // Show a non-blocking error
-          break; 
+      if (result && typeof result.code === 'string') {
+        setGeneratedCode(result.code);
+        if (result.code.startsWith('<!--')) {
+           setError(result.code);
         }
+      } else {
+        const errorMessage = 'CRITICAL_ERROR: AI model returned an invalid or empty response.';
+        setError(errorMessage);
+        setGeneratedCode(`<!-- ${errorMessage} -->`);
       }
-
     } catch (err) {
       console.error('Error in handleGenerateCode:', err);
       const errorMessage = `Failed to generate code. ${err instanceof Error ? err.message : 'An unexpected error occurred.'}`;
@@ -196,7 +149,6 @@ export const CodeProvider = ({ children }: { children: ReactNode }) => {
       setGeneratedCode(`<!-- Context Error (handleGenerateCode): ${errorMessage.replace(/-->/g, '--&gt;')} -->`);
     } finally {
       setIsLoading(false);
-      setIsEnhancing(false); // Ensure all loading states are off
     }
   };
   
@@ -455,5 +407,3 @@ export const useCodeContext = (): CodeContextType => {
   }
   return context;
 };
-
-    

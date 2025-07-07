@@ -1,9 +1,7 @@
-
 'use server';
 
 /**
  * @fileOverview A code refactoring AI agent.
- * It now includes logic to attempt completion if the output is truncated.
  *
  * - refactorCode - A function that handles the code refactoring process.
  * - RefactorCodeInput - The input type for the refactorCode function.
@@ -12,7 +10,6 @@
 
 import {ai} from '@/ai/ai-instance';
 import {z} from 'genkit';
-import {completeCode} from './complete-code-flow';
 import {HUNDRED_RULES, ADVANCED_UI_UX_GUIDELINES} from './promptSnippets';
 
 const RefactorCodeInputSchema = z.object({
@@ -26,14 +23,7 @@ const RefactorCodeOutputSchema = z.object({
 });
 export type RefactorCodeOutput = z.infer<typeof RefactorCodeOutputSchema>;
 
-// Function to check if HTML code seems incomplete (very basic check)
-function isHtmlIncomplete(htmlString: string): boolean {
-  if (!htmlString || typeof htmlString !== 'string') return true;
-  const trimmedHtml = htmlString.trim().toLowerCase();
-  return !trimmedHtml.endsWith('</html>');
-}
 
-const MAX_COMPLETION_ATTEMPTS = 2;
 const allBlockNoneSafetySettings = [
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
   { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
@@ -43,82 +33,7 @@ const allBlockNoneSafetySettings = [
 ];
 
 export async function refactorCode(input: RefactorCodeInput): Promise<RefactorCodeOutput> {
-  try {
-    let result = await refactorCodeFlow(input);
-    
-    if (!result || typeof result.code !== 'string') {
-      console.error("[refactorCode export] AI model returned null or invalid structure for refactored code.");
-      return { code: `<!-- Error: AI model returned null or invalid structure for refactored code. Original code preserved below. -->\n${input.code}` };
-    }
-
-    let currentCode = result.code;
-    let completionAttempts = 0;
-
-    while (isHtmlIncomplete(currentCode) && completionAttempts < MAX_COMPLETION_ATTEMPTS && !currentCode.startsWith('<!-- Error:')) {
-      completionAttempts++;
-      console.log(`[refactorCode export] Refactored code from attempt ${completionAttempts-1} seems incomplete. Attempting completion ${completionAttempts}/${MAX_COMPLETION_ATTEMPTS}.`);
-      
-      try {
-        const completionResult = await completeCode({
-          incompleteCode: currentCode,
-          originalUserPrompt: `Refactor the code based on: ${input.prompt}. Original code to refactor was: ${input.code.substring(0,200)}...`, // Provide context
-          instructionContext: `refactoring - completion attempt ${completionAttempts}`,
-        });
-
-        if (completionResult && typeof completionResult.completedCodePortion === 'string') {
-           if (completionResult.completedCodePortion.startsWith('<!-- CRITICAL_ERROR:') || completionResult.completedCodePortion.startsWith('<!-- ERROR_DURING_COMPLETION_FLOW:')) {
-             console.warn(`[refactorCode export] Completion attempt ${completionAttempts} resulted in an error comment: ${completionResult.completedCodePortion}`);
-             currentCode += `\n${completionResult.completedCodePortion}`;
-             break; 
-          }
-          currentCode += completionResult.completedCodePortion;
-          if (completionResult.isLikelyCompleteNow && !isHtmlIncomplete(currentCode)) {
-            console.log(`[refactorCode export] Code is now likely complete after ${completionAttempts} refactor completion attempts.`);
-            break;
-          }
-        } else {
-          console.warn(`[refactorCode export] Refactor completion attempt ${completionAttempts} returned invalid structure. Stopping.`);
-          currentCode += "\n<!-- WARNING: Refactor code completion attempt returned invalid data. -->";
-          break;
-        }
-      } catch (completionError: any) {
-        console.error(`[refactorCode export] Error during refactor completion attempt ${completionAttempts}:`, completionError);
-        const errorMessage = completionError instanceof Error ? completionError.message : JSON.stringify(completionError);
-        currentCode += `\n<!-- ERROR_DURING_REFACTOR_CODE_COMPLETION_EXPORT_LEVEL (Attempt ${completionAttempts}): ${errorMessage.replace(/-->/g, '--&gt;')} -->`;
-        break;
-      }
-    }
-     if (completionAttempts >= MAX_COMPLETION_ATTEMPTS && isHtmlIncomplete(currentCode)) {
-        console.warn(`[refactorCode export] Max refactor completion attempts (${MAX_COMPLETION_ATTEMPTS}) reached, but code still seems incomplete.`);
-        currentCode += "\n<!-- WARNING: Max refactor completion attempts reached, code might still be incomplete. -->";
-    }
-
-
-    if (currentCode.trim() === '' || currentCode.startsWith('<!-- Error:') || currentCode.startsWith('<!-- WARNING:') || currentCode.startsWith('<!-- CRITICAL_ERROR:')) {
-       console.warn(`[refactorCode export] Final refactored code is an error/warning: ${currentCode.substring(0,100)}`);
-       // If the AI returns an error comment, we should preserve the original code as a fallback.
-       if (currentCode.startsWith('<!-- Error:') || currentCode.startsWith('<!-- CRITICAL_ERROR:') || currentCode.startsWith('<!-- WARNING:')) {
-           return { code: `${currentCode}\n<!-- Original code was:\n${input.code}\n-->`};
-       }
-     } else {
-       console.log(`[refactorCode export] Final refactored code length: ${currentCode.length}`);
-     }
-    return { code: currentCode };
-
-  } catch (error: any) {
-    console.error("[refactorCode export] Critical error in refactorCode flow export:", error);
-    let errorMessage = "Unknown error in refactorCode export.";
-     if (error instanceof Error) {
-      errorMessage = error.message;
-    } else if (typeof error === 'string') {
-      errorMessage = error;
-    } else {
-      try {
-        errorMessage = JSON.stringify(error);
-      } catch (e) { /* ignore */ }
-    }
-    return { code: `<!-- Error refactoring code (export level): ${errorMessage.replace(/-->/g, '--&gt;')} -->\n${input.code}` };
-  }
+  return refactorCodeFlow(input);
 }
 
 const refactorCodePrompt = ai.definePrompt({
@@ -143,9 +58,7 @@ The "code" value MUST be a single string containing the complete refactored HTML
 
 ABSOLUTELY NO MARKDOWN, NO EXPLANATORY TEXT OUTSIDE THE JSON STRUCTURE. ONLY THE JSON OBJECT.
 
-If, for any reason (such as an overly complex/impossible request that you CANNOT FULFILL), you CANNOT generate the refactored HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: Cannot refactor due to X, Y, Z. -->" }).
-
-TARGET OUTPUT LENGTH for the HTML code string: AIM FOR A MINIMUM OF 1000-1500 LINES OF CODE, or significantly expand upon the original if it's already long. Even if the refactor request is simple, proactively enhance the code.
+If, for any reason you CANNOT generate the refactored HTML code as requested, then the "code" value in your JSON response MUST be a single HTML comment EXPLAINING THE REASON (e.g., { "code": "<!-- Error: Cannot refactor due to X, Y, Z. -->" }).
 
 Original Code to Refactor:
 \`\`\`html
@@ -195,15 +108,6 @@ const refactorCodeFlow = ai.defineFlow(
       let errorMessage = "Unknown error occurred during refactor code flow.";
       if (error instanceof Error) {
         errorMessage = error.message;
-        if (error.stack) {
-            console.error("[refactorCodeFlow] Error stack:", error.stack);
-        }
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      } else {
-        try {
-          errorMessage = JSON.stringify(error);
-        } catch (e) { /* ignore stringify error */ }
       }
       console.error("[refactorCodeFlow] Critical error in flow:", errorMessage);
       return { code: `<!-- ERROR_DURING_REFACTOR_CODE_FLOW: ${errorMessage.replace(/-->/g, '--&gt;')} -->\n${input.code}` };
